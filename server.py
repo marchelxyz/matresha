@@ -87,8 +87,9 @@ class BusinessAssistantHandler(http.server.SimpleHTTPRequestHandler):
         })
 
 def main():
-    PORT = 8000
-    
+    # Считываем порт из переменной окружения, по умолчанию 8000
+    PORT = int(os.environ.get('PORT', 8000))
+
     # Check if port is available
     try:
         with socketserver.TCPServer(("", PORT), BusinessAssistantHandler) as httpd:
@@ -98,18 +99,13 @@ def main():
             httpd.serve_forever()
     except OSError as e:
         if e.errno == 98:  # Address already in use
-            print(f"❌ Port {PORT} is already in use. Try a different port:")
-            print(f"   python server.py {PORT + 1}")
+            print(f"❌ Port {PORT} is already in use.")
         else:
             print(f"❌ Error starting server: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        try:
-            PORT = int(sys.argv[1])
-        except ValueError:
-            print("❌ Invalid port number. Using default port 8000.")
+    main()
             PORT = 8000
     else:
         PORT = 8000
