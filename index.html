@@ -3,95 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Assistant - Telegram Mini App</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="styles.css">
+    <title>Business Assistant - Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .section h2 {
+            color: #007bff;
+            margin-bottom: 15px;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .structure {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-line;
+        }
+        .button {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+    </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="app-title">Business Assistant</h1>
-                <div class="user-info">
-                    <span class="user-name" id="userName">Пользователь</span>
-                </div>
-            </div>
-        </header>
+    <div class="container">
+        <h1>🚀 Business Assistant - Реорганизация завершена!</h1>
+        
+        <div class="section">
+            <h2>✅ Выполненные задачи:</h2>
+            <ul>
+                <li class="success">Создана структура папок: backend и frontend</li>
+                <li class="success">Файлы распределены по соответствующим папкам</li>
+                <li class="success">Созданы подпапки для организации кода</li>
+                <li class="success">Интерфейс изменен: боковое меню вместо верхнего</li>
+                <li class="success">Добавлена функциональность сворачивания меню</li>
+                <li class="success">Обновлены стили для нового дизайна</li>
+                <li class="success">Обновлены package.json и README.md</li>
+            </ul>
+        </div>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Navigation Menu -->
-            <nav class="nav-menu" id="navMenu">
-                <button class="nav-item active" data-section="operations">
-                    <div class="nav-icon">📊</div>
-                    <span>Операции</span>
-                </button>
-                <button class="nav-item" data-section="marketing">
-                    <div class="nav-icon">📈</div>
-                    <span>Маркетинг</span>
-                </button>
-                <button class="nav-item" data-section="accounting">
-                    <div class="nav-icon">💰</div>
-                    <span>Бухгалтерия</span>
-                </button>
-                <button class="nav-item" data-section="legal">
-                    <div class="nav-icon">⚖️</div>
-                    <span>Юридический</span>
-                </button>
-            </nav>
+        <div class="section">
+            <h2>📁 Новая структура проекта:</h2>
+            <div class="structure">├── backend/                 # Backend сервер (Railway)
+│   ├── routers/            # API роутеры
+│   ├── services/           # Бизнес-логика
+│   ├── models/             # Модели данных
+│   ├── utils/              # Утилиты
+│   ├── server.py           # Основной сервер
+│   └── requirements.txt    # Python зависимости
+├── frontend/               # Frontend приложение (Vercel)
+│   ├── pages/              # Страницы приложения
+│   ├── components/         # React компоненты
+│   ├── services/           # API сервисы
+│   ├── styles/             # CSS стили
+│   │   └── styles.css      # Основные стили
+│   ├── index.html          # Главная страница
+│   ├── script.js           # Основной JavaScript
+│   ├── api.js              # API клиент
+│   └── telegram-config.js  # Конфигурация Telegram
+├── package.json            # Node.js зависимости
+└── README.md              # Документация</div>
+        </div>
 
-            <!-- Chat Interface -->
-            <div class="chat-container">
-                <div class="chat-messages" id="chatMessages">
-                    <div class="welcome-message">
-                        <div class="message bot-message">
-                            <div class="message-content">
-                                <h3>Добро пожаловать в Business Assistant! 🚀</h3>
-                                <p>Я ваш умный помощник для ведения бизнеса. Выберите раздел в меню выше, и я помогу вам с:</p>
-                                <ul>
-                                    <li><strong>Операции:</strong> Анализ экономических показателей и рекомендации</li>
-                                    <li><strong>Маркетинг:</strong> Настройка рекламных кампаний и креативные решения</li>
-                                    <li><strong>Бухгалтерия:</strong> Финансовые отчеты и декларации для РФ</li>
-                                    <li><strong>Юридический:</strong> Документы и правовые консультации</li>
-                                </ul>
-                                <p>Просто напишите ваш вопрос, и я помогу!</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="section">
+            <h2>🎨 Новые возможности интерфейса:</h2>
+            <ul>
+                <li><strong>Боковое меню</strong> с иконками и текстом</li>
+                <li><strong>Сворачивание меню</strong> для увеличения рабочего пространства</li>
+                <li><strong>Адаптивный дизайн</strong> для мобильных устройств</li>
+                <li><strong>Мобильное меню</strong> с кнопкой-гамбургером</li>
+                <li><strong>Сохранение состояния</strong> меню в localStorage</li>
+                <li><strong>Улучшенная навигация</strong> между разделами</li>
+            </ul>
+        </div>
 
-                <!-- Input Area -->
-                <div class="chat-input-container">
-                    <div class="input-wrapper">
-                        <textarea 
-                            id="messageInput" 
-                            placeholder="Напишите ваш вопрос..." 
-                            rows="1"
-                            maxlength="4000"
-                        ></textarea>
-                        <button id="sendButton" class="send-button">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="input-footer">
-                        <span class="char-count" id="charCount">0/4000</span>
-                    </div>
-                </div>
-            </div>
-        </main>
+        <div class="section">
+            <h2>🚀 Запуск приложения:</h2>
+            <p>Для запуска приложения используйте следующие команды:</p>
+            <div class="structure"># Backend (Python сервер)
+cd backend && python server.py
+
+# Frontend (статический сервер)
+cd frontend && npx serve .
+
+# Или через npm скрипты
+npm run dev:backend  # Запуск backend
+npm run dev:frontend # Запуск frontend</div>
+        </div>
+
+        <div class="section">
+            <h2>📱 Тестирование:</h2>
+            <a href="frontend/index.html" class="button">Открыть приложение</a>
+            <a href="frontend/styles/styles.css" class="button">Посмотреть стили</a>
+            <a href="README.md" class="button">Документация</a>
+        </div>
+
+        <div class="section">
+            <h2>🎯 Следующие шаги:</h2>
+            <ul>
+                <li>Настройка базы данных PostgreSQL</li>
+                <li>Интеграция с реальным AI API</li>
+                <li>Деплой на Railway (backend) и Vercel (frontend)</li>
+                <li>Настройка Telegram Bot</li>
+                <li>Добавление аутентификации пользователей</li>
+            </ul>
+        </div>
     </div>
-
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <p>Обрабатываю запрос...</p>
-    </div>
-
-    <script src="telegram-config.js"></script>
-    <script src="api.js"></script>
-    <script src="script.js"></script>
 </body>
 </html>
