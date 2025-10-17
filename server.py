@@ -89,7 +89,7 @@ class BusinessAssistantHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     # Считываем порт из переменной окружения, по умолчанию 8000
     PORT = int(os.environ.get('PORT', 8000))
-
+    
     # Check if port is available
     try:
         with socketserver.TCPServer(("", PORT), BusinessAssistantHandler) as httpd:
@@ -105,9 +105,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
-            PORT = 8000
-    else:
-        PORT = 8000
-    
     main()
