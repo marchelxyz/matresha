@@ -2,13 +2,15 @@
   "name": "business-assistant-telegram",
   "version": "1.0.0",
   "description": "Умный помощник для ведения бизнеса - Telegram Mini App",
-  "main": "index.html",
+  "main": "frontend/index.html",
   "scripts": {
-    "start": "python -m http.server 8000",
-    "dev": "python -m http.server 8000",
+    "start": "cd backend && python server.py",
+    "dev": "cd backend && python server.py",
     "build": "echo 'No build step required for static files'",
-    "serve": "npx serve .",
-    "deploy": "echo 'Deploy to your preferred hosting service'"
+    "serve": "npx serve frontend/",
+    "deploy": "echo 'Deploy to your preferred hosting service'",
+    "dev:frontend": "cd frontend && npx serve .",
+    "dev:backend": "cd backend && python server.py"
   },
   "keywords": [
     "telegram",

@@ -2,6 +2,9 @@
 const tg = window.Telegram.WebApp;
 
 // DOM elements
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const mobileMenuToggle = document.getElementById('mobileMenuToggle');
 const navItems = document.querySelectorAll('.nav-item');
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
@@ -9,10 +12,12 @@ const sendButton = document.getElementById('sendButton');
 const charCount = document.getElementById('charCount');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const userName = document.getElementById('userName');
+const sectionTitle = document.getElementById('sectionTitle');
 
 // State
 let currentSection = 'operations';
 let isProcessing = false;
+let sidebarCollapsed = false;
 
 // Initialize the app
 function initApp() {
@@ -39,11 +44,19 @@ function initApp() {
 
 // Setup event listeners
 function setupEventListeners() {
+    // Sidebar toggle
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    mobileMenuToggle.addEventListener('click', toggleMobileMenu);
+    
     // Navigation
     navItems.forEach(item => {
         item.addEventListener('click', () => {
             const section = item.dataset.section;
             switchSection(section);
+            // Close mobile menu after selection
+            if (window.innerWidth <= 768) {
+                closeMobileMenu();
+            }
         });
     });
     
@@ -56,6 +69,45 @@ function setupEventListeners() {
     
     // Auto-resize textarea
     messageInput.addEventListener('input', autoResizeTextarea);
+    
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (window.innerWidth <= 768 && 
+            !sidebar.contains(e.target) && 
+            !mobileMenuToggle.contains(e.target)) {
+            closeMobileMenu();
+        }
+    });
+    
+    // Handle window resize
+    window.addEventListener('resize', handleResize);
+}
+
+// Toggle sidebar (desktop)
+function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+    sidebar.classList.toggle('collapsed', sidebarCollapsed);
+    document.querySelector('.main-content').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+    
+    // Save preference
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+}
+
+// Toggle mobile menu
+function toggleMobileMenu() {
+    sidebar.classList.toggle('open');
+}
+
+// Close mobile menu
+function closeMobileMenu() {
+    sidebar.classList.remove('open');
+}
+
+// Handle window resize
+function handleResize() {
+    if (window.innerWidth > 768) {
+        closeMobileMenu();
+    }
 }
 
 // Switch between sections
@@ -67,8 +119,23 @@ function switchSection(section) {
         item.classList.toggle('active', item.dataset.section === section);
     });
     
+    // Update section title
+    updateSectionTitle(section);
+    
     // Show section-specific welcome message
     showSectionWelcome(section);
+}
+
+// Update section title
+function updateSectionTitle(section) {
+    const titles = {
+        operations: 'Операционное управление',
+        marketing: 'Маркетинг и реклама',
+        accounting: 'Бухгалтерия и финансы',
+        legal: 'Юридический отдел'
+    };
+    
+    sectionTitle.textContent = titles[section] || 'Business Assistant';
 }
 
 // Show section-specific welcome message
@@ -326,5 +393,18 @@ async function simulateAIResponse(userMessage, section) {
     return response;
 }
 
+// Load sidebar state from localStorage
+function loadSidebarState() {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved === 'true') {
+        sidebarCollapsed = true;
+        sidebar.classList.add('collapsed');
+        document.querySelector('.main-content').classList.add('sidebar-collapsed');
+    }
+}
+
 // Initialize app when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', () => {
+    loadSidebarState();
+    initApp();
+});

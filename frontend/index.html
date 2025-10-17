@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Assistant - Telegram Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="styles/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1 class="app-title">Business Assistant</h1>
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Navigation Menu -->
+            <nav class="nav-menu">
+                <button class="nav-item active" data-section="operations">
+                    <div class="nav-icon">📊</div>
+                    <span class="nav-text">Операции</span>
+                </button>
+                <button class="nav-item" data-section="marketing">
+                    <div class="nav-icon">📈</div>
+                    <span class="nav-text">Маркетинг</span>
+                </button>
+                <button class="nav-item" data-section="accounting">
+                    <div class="nav-icon">💰</div>
+                    <span class="nav-text">Бухгалтерия</span>
+                </button>
+                <button class="nav-item" data-section="legal">
+                    <div class="nav-icon">⚖️</div>
+                    <span class="nav-text">Юридический</span>
+                </button>
+            </nav>
+            
+            <!-- User Info -->
+            <div class="user-info">
+                <span class="user-name" id="userName">Пользователь</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <h2 class="section-title" id="sectionTitle">Операционное управление</h2>
+            </header>
+
+            <!-- Chat Interface -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <div class="message bot-message">
+                            <div class="message-content">
+                                <h3>Добро пожаловать в Business Assistant! 🚀</h3>
+                                <p>Я ваш умный помощник для ведения бизнеса. Выберите раздел в меню слева, и я помогу вам с:</p>
+                                <ul>
+                                    <li><strong>Операции:</strong> Анализ экономических показателей и рекомендации</li>
+                                    <li><strong>Маркетинг:</strong> Настройка рекламных кампаний и креативные решения</li>
+                                    <li><strong>Бухгалтерия:</strong> Финансовые отчеты и декларации для РФ</li>
+                                    <li><strong>Юридический:</strong> Документы и правовые консультации</li>
+                                </ul>
+                                <p>Просто напишите ваш вопрос, и я помогу!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="messageInput" 
+                            placeholder="Напишите ваш вопрос..." 
+                            rows="1"
+                            maxlength="4000"
+                        ></textarea>
+                        <button id="sendButton" class="send-button">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="input-footer">
+                        <span class="char-count" id="charCount">0/4000</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p>Обрабатываю запрос...</p>
+    </div>
+
+    <script src="telegram-config.js"></script>
+    <script src="api.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
