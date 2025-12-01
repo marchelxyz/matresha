@@ -34,6 +34,38 @@ const providers = {
     mistral: { name: 'Mistral Large', model: 'mistral-large-latest' }
 };
 
+// Apply Telegram theme colors
+function applyTelegramTheme() {
+    const themeParams = tg.themeParams;
+    const root = document.documentElement;
+    
+    // Apply theme colors as CSS variables
+    if (themeParams.bg_color) {
+        root.style.setProperty('--tg-theme-bg-color', themeParams.bg_color);
+    }
+    if (themeParams.text_color) {
+        root.style.setProperty('--tg-theme-text-color', themeParams.text_color);
+    }
+    if (themeParams.hint_color) {
+        root.style.setProperty('--tg-theme-hint-color', themeParams.hint_color);
+    }
+    if (themeParams.link_color) {
+        root.style.setProperty('--tg-theme-link-color', themeParams.link_color);
+    }
+    if (themeParams.button_color) {
+        root.style.setProperty('--tg-theme-button-color', themeParams.button_color);
+    }
+    if (themeParams.button_text_color) {
+        root.style.setProperty('--tg-theme-button-text-color', themeParams.button_text_color);
+    }
+    if (themeParams.secondary_bg_color) {
+        root.style.setProperty('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color);
+    }
+    
+    // Listen for theme changes
+    tg.onEvent('themeChanged', applyTelegramTheme);
+}
+
 // Initialize the app
 async function initApp() {
     // Initialize markdown parser
@@ -46,6 +78,9 @@ async function initApp() {
     // Set theme
     document.body.style.backgroundColor = tg.themeParams.bg_color || '#ffffff';
     document.body.style.color = tg.themeParams.text_color || '#212121';
+    
+    // Apply Telegram theme colors to CSS variables for adaptive header
+    applyTelegramTheme();
     
     // Load settings from localStorage
     loadSettings();
