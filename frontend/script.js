@@ -172,6 +172,20 @@ async function initApp() {
         }
     }, 100);
     
+    // Финальная прокрутка к последнему сообщению при открытии приложения
+    // Используем несколько попыток для надежности
+    setTimeout(() => {
+        scrollToBottom(true);
+        setTimeout(() => {
+            scrollToBottom(true);
+            updateScrollButtonVisibility();
+        }, 200);
+        setTimeout(() => {
+            scrollToBottom(true);
+            updateScrollButtonVisibility();
+        }, 500);
+    }, 300);
+    
     // Проверить видимость кнопки прокрутки после загрузки
     setTimeout(() => {
         updateScrollButtonVisibility();
@@ -190,6 +204,19 @@ function setupEventListeners() {
     // Message input
     messageInput.addEventListener('input', handleInputChange);
     messageInput.addEventListener('keydown', handleKeyDown);
+    
+    // Глобальный обработчик клавиатуры для стрелки вниз (работает везде)
+    document.addEventListener('keydown', (event) => {
+        // Стрелка вниз для прокрутки чата (только если поле ввода не в фокусе)
+        if (event.key === 'ArrowDown' && document.activeElement !== messageInput) {
+            const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+            // Если есть что прокручивать (больше 50px от низа)
+            if (scrollBottom > 50) {
+                event.preventDefault();
+                scrollToBottom();
+            }
+        }
+    });
     
     // Send button
     sendButton.addEventListener('click', sendMessage);
@@ -615,6 +642,7 @@ function createBotMessageContainer() {
     messageDiv.appendChild(contentDiv);
     
     chatMessages.appendChild(messageDiv);
+    // Прокручиваем к новому сообщению бота
     scrollToBottom();
     
     return { messageDiv, textDiv, copyBtn };
@@ -627,7 +655,8 @@ function updateBotMessage({ textDiv }, text) {
     } else {
         textDiv.textContent = text;
     }
-    scrollToBottom();
+    // Прокручиваем только если пользователь уже внизу (во время стриминга)
+    scrollToBottom(false, true);
 }
 
 // Stream AI response
@@ -794,23 +823,64 @@ function addMessage(text, sender) {
     messageDiv.appendChild(contentDiv);
     
     chatMessages.appendChild(messageDiv);
+    // Прокручиваем к новому сообщению пользователя
     scrollToBottom();
 }
 
-// Scroll to bottom
-function scrollToBottom() {
+// Check if user is near bottom of chat
+function isNearBottom(threshold = 100) {
+    if (!chatMessages) return false;
+    const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+    return scrollBottom <= threshold;
+}
+
+// Scroll to bottom with improved reliability
+function scrollToBottom(forceInstant = false, onlyIfNearBottom = false) {
     if (!chatMessages) return;
     
-    requestAnimationFrame(() => {
-        // Используем scrollTo для более надежной прокрутки
-        chatMessages.scrollTo({
-            top: chatMessages.scrollHeight,
-            behavior: 'smooth'
+    // Если onlyIfNearBottom = true, прокручиваем только если пользователь уже внизу
+    if (onlyIfNearBottom && !isNearBottom()) {
+        return;
+    }
+    
+    const scroll = () => {
+        const targetScrollTop = chatMessages.scrollHeight - chatMessages.clientHeight;
+        
+        if (forceInstant) {
+            // Мгновенная прокрутка без анимации
+            chatMessages.scrollTop = targetScrollTop;
+        } else {
+            // Плавная прокрутка
+            chatMessages.scrollTo({
+                top: targetScrollTop,
+                behavior: 'smooth'
+            });
+            // Дублируем для надежности
+            chatMessages.scrollTop = targetScrollTop;
+        }
+        
+        // Проверяем, что прокрутка действительно произошла
+        requestAnimationFrame(() => {
+            const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+            if (scrollBottom > 10 && !forceInstant) {
+                // Если прокрутка не завершилась, делаем еще одну попытку
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            updateScrollButtonVisibility();
         });
-        // Также устанавливаем напрямую для немедленного эффекта
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        // Скрыть кнопку после прокрутки вниз
-        updateScrollButtonVisibility();
+    };
+    
+    // Используем requestAnimationFrame для гарантии, что DOM обновлен
+    requestAnimationFrame(() => {
+        scroll();
+        // Дополнительная проверка через небольшую задержку
+        setTimeout(() => {
+            const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+            if (scrollBottom > 10) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                updateScrollButtonVisibility();
+            }
+        }, 100);
     });
 }
 
@@ -871,19 +941,35 @@ async function loadChatHistory() {
                     }
                 });
                 
-                // Прокрутить вниз после загрузки всех сообщений - используем несколько попыток
-                // для гарантии прокрутки после полного рендеринга
-                setTimeout(() => {
-                    scrollToBottom();
+                // Прокрутить вниз после загрузки всех сообщений
+                // Используем более надежный механизм с несколькими попытками
+                const scrollToLastMessage = () => {
+                    // Первая попытка - мгновенная прокрутка для быстрого отображения
+                    scrollToBottom(true);
+                    
+                    // Вторая попытка через небольшую задержку для учета рендеринга изображений/контента
                     setTimeout(() => {
-                        scrollToBottom();
+                        scrollToBottom(true);
                         updateScrollButtonVisibility();
                     }, 100);
+                    
+                    // Третья попытка через большую задержку для полной загрузки контента
                     setTimeout(() => {
-                        scrollToBottom();
+                        scrollToBottom(true);
                         updateScrollButtonVisibility();
                     }, 300);
-                }, 50);
+                    
+                    // Финальная проверка и прокрутка
+                    setTimeout(() => {
+                        scrollToBottom(true);
+                        updateScrollButtonVisibility();
+                    }, 500);
+                };
+                
+                // Запускаем прокрутку после небольшой задержки для завершения рендеринга
+                requestAnimationFrame(() => {
+                    scrollToLastMessage();
+                });
                 console.log(`Loaded ${result.data.messages.length} messages from history`);
             } else if (result.data.chats && result.data.chats.length > 0) {
                 // If we have chats but no messages, load the most recent chat's messages
@@ -897,18 +983,34 @@ async function loadChatHistory() {
                                 addMessageFromHistory(msg.content, msg.role);
                             }
                         });
-                        // Прокрутить вниз после загрузки всех сообщений - используем несколько попыток
-                        setTimeout(() => {
-                            scrollToBottom();
+                        // Прокрутить вниз после загрузки всех сообщений
+                        const scrollToLastMessage = () => {
+                            // Первая попытка - мгновенная прокрутка для быстрого отображения
+                            scrollToBottom(true);
+                            
+                            // Вторая попытка через небольшую задержку для учета рендеринга изображений/контента
                             setTimeout(() => {
-                                scrollToBottom();
+                                scrollToBottom(true);
                                 updateScrollButtonVisibility();
                             }, 100);
+                            
+                            // Третья попытка через большую задержку для полной загрузки контента
                             setTimeout(() => {
-                                scrollToBottom();
+                                scrollToBottom(true);
                                 updateScrollButtonVisibility();
                             }, 300);
-                        }, 50);
+                            
+                            // Финальная проверка и прокрутка
+                            setTimeout(() => {
+                                scrollToBottom(true);
+                                updateScrollButtonVisibility();
+                            }, 500);
+                        };
+                        
+                        // Запускаем прокрутку после небольшой задержки для завершения рендеринга
+                        requestAnimationFrame(() => {
+                            scrollToLastMessage();
+                        });
                         console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
                     }
                 }
