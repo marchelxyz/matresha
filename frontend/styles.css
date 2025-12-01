@@ -58,7 +58,7 @@ body {
     justify-content: center;
     gap: 12px;
     width: 100%;
-    padding-top: 14px;
+    padding-top: 8px;
 }
 
 .logo-wrapper {
@@ -66,6 +66,7 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    margin-top: 6px;
 }
 
 .app-logo {
