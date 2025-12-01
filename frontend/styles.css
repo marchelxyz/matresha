@@ -70,9 +70,15 @@ body {
 
 .app-logo {
     width: 48px;
-    height: 56px;
+    height: 56px; /* ИЗМЕНИТЕ ЭТО ЗНАЧЕНИЕ для настройки высоты логотипа */
     display: block;
     object-fit: contain;
+    /* Для изменения цвета SVG используйте filter или измените fill в самом SVG файле */
+    /* Примеры фильтров для изменения цвета:
+       filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%); /* красный */
+       filter: brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%); /* зеленый */
+       filter: brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(7151%) hue-rotate(247deg) brightness(118%) contrast(144%); /* синий */
+    */
 }
 
 .app-title {
@@ -661,7 +667,7 @@ body {
     
     .app-logo {
         width: 40px;
-        height: 47px;
+        height: 47px; /* Высота логотипа для планшетов (экраны до 768px) */
     }
     
     .app-title {
@@ -718,7 +724,7 @@ body {
     
     .app-logo {
         width: 36px;
-        height: 42px;
+        height: 42px; /* Высота логотипа для мобильных (экраны до 480px) */
     }
     
     .app-title {
