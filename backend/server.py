@@ -184,7 +184,7 @@ class GroqProvider(AIProvider):
             raise ValueError("Groq API key not configured")
         
         response = self.client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": message}],
             temperature=temperature,
             max_tokens=max_tokens
@@ -197,7 +197,7 @@ class GroqProvider(AIProvider):
             raise ValueError("Groq API key not configured")
         
         stream = self.client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": message}],
             temperature=temperature,
             max_tokens=max_tokens,
