@@ -7,11 +7,13 @@ Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
 import os
 import json
 import time
+import base64
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, Response, stream_with_context, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from contextlib import contextmanager
+from werkzeug.utils import secure_filename
 
 # Import database
 from database import SessionLocal, Chat, Message, get_db
@@ -769,6 +771,195 @@ def chat_stream():
             'success': False,
             'error': error_msg,
             'type': error_type
+        }), 500
+
+
+def process_file(file):
+    """Process uploaded file and return content description"""
+    try:
+        filename = secure_filename(file.filename)
+        content_type = file.content_type or ''
+        
+        # Process images
+        if content_type.startswith('image/'):
+            # Read image as base64
+            file_data = file.read()
+            file_base64 = base64.b64encode(file_data).decode('utf-8')
+            return {
+                'type': 'image',
+                'filename': filename,
+                'content_type': content_type,
+                'base64': file_base64,
+                'description': f'Изображение: {filename}'
+            }
+        
+        # Process text files
+        elif content_type.startswith('text/') or filename.endswith(('.txt', '.md', '.py', '.js', '.html', '.css', '.json')):
+            file_data = file.read()
+            try:
+                text_content = file_data.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    text_content = file_data.decode('latin-1')
+                except:
+                    text_content = f'[Не удалось прочитать содержимое файла {filename}]'
+            
+            return {
+                'type': 'text',
+                'filename': filename,
+                'content': text_content,
+                'description': f'Текстовый файл {filename}:\n{text_content[:1000]}...' if len(text_content) > 1000 else f'Текстовый файл {filename}:\n{text_content}'
+            }
+        
+        # Process PDF (basic support - would need pdf library for full support)
+        elif content_type == 'application/pdf' or filename.endswith('.pdf'):
+            return {
+                'type': 'pdf',
+                'filename': filename,
+                'description': f'PDF файл: {filename} (для полной обработки PDF требуется дополнительная библиотека)'
+            }
+        
+        # Other file types
+        else:
+            return {
+                'type': 'other',
+                'filename': filename,
+                'content_type': content_type,
+                'description': f'Файл: {filename} (тип: {content_type})'
+            }
+    
+    except Exception as e:
+        return {
+            'type': 'error',
+            'filename': file.filename if hasattr(file, 'filename') else 'unknown',
+            'error': str(e),
+            'description': f'Ошибка обработки файла: {str(e)}'
+        }
+
+
+@app.route('/api/chat/with-files', methods=['POST'])
+@app.route('/chat/with-files', methods=['POST'])
+def chat_with_files():
+    """Chat endpoint with file upload support"""
+    try:
+        # Get form data
+        message = request.form.get('message', '')
+        provider_name = request.form.get('provider', 'openai')
+        
+        try:
+            temperature = float(request.form.get('temperature', 0.7))
+        except (ValueError, TypeError):
+            temperature = 0.7
+        
+        try:
+            max_tokens = int(request.form.get('maxTokens', 2000))
+        except (ValueError, TypeError):
+            max_tokens = 2000
+        
+        # Get user info
+        user_id = request.form.get('user_id')
+        user_name = request.form.get('user_first_name')
+        username = request.form.get('user_username')
+        
+        # Process uploaded files
+        file_descriptions = []
+        file_keys = [key for key in request.files.keys() if key.startswith('file_')]
+        file_keys.sort()  # Sort to maintain order
+        
+        for file_key in file_keys:
+            file = request.files[file_key]
+            if file and file.filename:
+                file_info = process_file(file)
+                file_descriptions.append(file_info['description'])
+        
+        # Combine message with file descriptions
+        if file_descriptions:
+            files_text = '\n\nПрикрепленные файлы:\n' + '\n'.join([f'- {desc}' for desc in file_descriptions])
+            full_message = message + files_text if message else files_text
+        else:
+            full_message = message
+        
+        if not full_message.strip():
+            return jsonify({
+                'success': False,
+                'error': 'Message or files are required'
+            }), 400
+        
+        # Get or create chat session
+        chat_id = None
+        messages_history = []
+        if user_id:
+            chat_id = get_or_create_chat(user_id, user_name, username, provider_name)
+            # Load chat history
+            history = get_chat_history(chat_id)
+            # Convert to format expected by providers
+            messages_history = [
+                {"role": msg['role'], "content": msg['content']}
+                for msg in history
+            ]
+        
+        provider = get_provider(provider_name)
+        
+        # Add current user message to history
+        messages_history.append({"role": "user", "content": full_message})
+        
+        # Save user message to database
+        if chat_id and user_id:
+            try:
+                save_message(chat_id, "user", full_message, provider_name, temperature, max_tokens)
+            except Exception as db_error:
+                print(f"WARNING: Failed to save user message to database: {str(db_error)}")
+        
+        def generate():
+            full_response = ""
+            try:
+                for chunk in provider.stream(
+                    full_message,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    messages=messages_history if messages_history else None
+                ):
+                    if chunk:
+                        full_response += chunk
+                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                
+                # Save assistant response to database
+                if chat_id and user_id and full_response:
+                    try:
+                        save_message(chat_id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    except Exception as db_error:
+                        print(f"WARNING: Failed to save message to database: {str(db_error)}")
+                
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                error_msg = str(e)
+                error_type = type(e).__name__
+                print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                yield "data: [DONE]\n\n"
+        
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+    
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 

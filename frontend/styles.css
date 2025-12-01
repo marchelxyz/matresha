@@ -540,6 +540,36 @@ body {
     max-width: calc(100% - 48px);
 }
 
+.file-button {
+    background: transparent;
+    border: none;
+    color: var(--tg-theme-text-color, #212121);
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.file-button:hover {
+    background: rgba(0, 0, 0, 0.05);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.file-button:active {
+    transform: scale(0.95);
+}
+
+.file-button svg {
+    width: 20px;
+    height: 20px;
+}
+
 .input-wrapper:focus-within {
     border-color: rgba(0, 123, 255, 0.5);
     background: rgba(255, 255, 255, 0.15);
@@ -593,12 +623,70 @@ body {
 
 .input-footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 8px;
     padding: 0 4px;
     width: 100%;
     max-width: calc(100% - 48px);
+}
+
+.attached-files {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.file-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    border: 1px solid var(--tg-theme-hint-color, #e5e5e5);
+    border-radius: 16px;
+    padding: 4px 8px 4px 12px;
+    font-size: 12px;
+    color: var(--tg-theme-text-color, #212121);
+    max-width: 200px;
+}
+
+.file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.file-remove {
+    background: transparent;
+    border: none;
+    color: var(--tg-theme-text-color, #212121);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.file-remove:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.file-remove:active {
+    transform: scale(0.9);
+}
+
+.footer-right {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
 }
 
 .char-count {
