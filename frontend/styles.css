@@ -33,7 +33,7 @@ body {
     background: var(--tg-theme-secondary-bg-color, #ffffff);
     border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
     padding: 0;
-    min-height: 96px;
+    min-height: 112px;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -59,6 +59,7 @@ body {
     justify-content: center;
     gap: 12px;
     width: 100%;
+    padding-top: 8px;
 }
 
 .app-title {
@@ -75,7 +76,7 @@ body {
     border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
     padding: 12px 16px;
     position: sticky;
-    top: 96px;
+    top: 112px;
     z-index: 99;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -642,7 +643,7 @@ body {
 /* Responsive Design */
 @media (max-width: 768px) {
     .header {
-        min-height: 80px;
+        min-height: 96px;
     }
     
     .app-title {
@@ -650,7 +651,7 @@ body {
     }
     
     .model-selector-menu {
-        top: 80px;
+        top: 96px;
         padding: 10px 12px;
     }
     
@@ -694,7 +695,7 @@ body {
 
 @media (max-width: 480px) {
     .header {
-        min-height: 72px;
+        min-height: 88px;
     }
     
     .app-title {
@@ -702,7 +703,7 @@ body {
     }
     
     .model-selector-menu {
-        top: 72px;
+        top: 88px;
         padding: 8px 12px;
     }
     
