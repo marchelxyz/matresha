@@ -689,11 +689,14 @@ def chat_stream():
         
         # Get or create chat session
         chat = None
+        chat_id = None
         messages_history = []
         if user_id:
             chat = get_or_create_chat(user_id, user_name, username, provider_name)
+            # Сохраняем chat.id сразу после получения, пока объект еще связан с сессией
+            chat_id = chat.id
             # Load chat history
-            history = get_chat_history(chat.id)
+            history = get_chat_history(chat_id)
             # Convert to format expected by providers
             messages_history = [
                 {"role": msg['role'], "content": msg['content']}
@@ -704,9 +707,9 @@ def chat_stream():
         messages_history.append({"role": "user", "content": message})
         
         # Save user message to database
-        if chat and user_id:
+        if chat_id and user_id:
             try:
-                save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
+                save_message(chat_id, "user", message, provider_name, temperature, max_tokens)
             except Exception as db_error:
                 print(f"WARNING: Failed to save user message to database: {str(db_error)}")
                 # Продолжаем выполнение даже если сохранение не удалось
@@ -725,9 +728,9 @@ def chat_stream():
                         yield f"data: {json.dumps({'content': chunk})}\n\n"
                 
                 # Save assistant response to database
-                if chat and user_id and full_response:
+                if chat_id and user_id and full_response:
                     try:
-                        save_message(chat.id, "assistant", full_response, provider_name, temperature, max_tokens)
+                        save_message(chat_id, "assistant", full_response, provider_name, temperature, max_tokens)
                     except Exception as db_error:
                         print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
