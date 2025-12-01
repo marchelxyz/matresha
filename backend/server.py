@@ -7,14 +7,20 @@ Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
 import os
 import json
 import time
+import base64
+import io
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, Response, stream_with_context, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from contextlib import contextmanager
+from werkzeug.utils import secure_filename
 
 # Import database
 from database import SessionLocal, Chat, Message, get_db
+
+# Import storage
+from storage import storage
 
 # Load environment variables
 load_dotenv()
@@ -769,6 +775,401 @@ def chat_stream():
             'success': False,
             'error': error_msg,
             'type': error_type
+        }), 500
+
+
+def process_file(file):
+    """Process uploaded file and return content description"""
+    try:
+        filename = secure_filename(file.filename)
+        content_type = file.content_type or ''
+        file_extension = filename.lower().split('.')[-1] if '.' in filename else ''
+        
+        # Read file data once (file.read() moves the file pointer)
+        file.seek(0)  # Reset file pointer to beginning
+        file_data = file.read()
+        
+        # Сохраняем файл в хранилище (если настроено)
+        storage_info = None
+        if storage.enabled:
+            storage_info = storage.upload_file(
+                file_data=file_data,
+                filename=filename,
+                content_type=content_type,
+                folder='chat-files'
+            )
+        
+        # Process images
+        if content_type.startswith('image/'):
+            file_base64 = base64.b64encode(file_data).decode('utf-8')
+            
+            # Try to extract image metadata using Pillow
+            image_info = f'Изображение: {filename}'
+            try:
+                from PIL import Image
+                img = Image.open(io.BytesIO(file_data))
+                width, height = img.size
+                image_info += f' ({width}x{height}px)'
+            except Exception:
+                pass
+            
+            result = {
+                'type': 'image',
+                'filename': filename,
+                'content_type': content_type,
+                'base64': file_base64,
+                'description': image_info
+            }
+            
+            # Добавляем информацию о хранилище, если файл был сохранен
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\nФайл сохранен в облаке: {storage_info["url"]}'
+            
+            return result
+        
+        # Process PDF files
+        elif content_type == 'application/pdf' or file_extension == 'pdf':
+            try:
+                import pdfplumber
+                
+                # Extract text from PDF
+                text_parts = []
+                with pdfplumber.open(io.BytesIO(file_data)) as pdf:
+                    for i, page in enumerate(pdf.pages[:10]):  # Limit to first 10 pages
+                        text = page.extract_text()
+                        if text:
+                            text_parts.append(f'Страница {i+1}:\n{text}')
+                
+                if text_parts:
+                    full_text = '\n\n'.join(text_parts)
+                    # Limit text length
+                    if len(full_text) > 5000:
+                        full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
+                    result = {
+                        'type': 'pdf',
+                        'filename': filename,
+                        'content': full_text,
+                        'description': f'PDF файл {filename}:\n{full_text}'
+                    }
+                    
+                    # Добавляем информацию о хранилище, если файл был сохранен
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    
+                    return result
+                else:
+                    result = {
+                        'type': 'pdf',
+                        'filename': filename,
+                        'description': f'PDF файл: {filename} (не удалось извлечь текст, возможно это сканированное изображение)'
+                    }
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    return result
+            except ImportError:
+                return {
+                    'type': 'pdf',
+                    'filename': filename,
+                    'description': f'PDF файл: {filename} (библиотека pdfplumber не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'pdf',
+                    'filename': filename,
+                    'description': f'PDF файл: {filename} (ошибка обработки: {str(e)})'
+                }
+        
+        # Process Word documents (.docx)
+        elif content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or file_extension == 'docx':
+            try:
+                import docx
+                
+                # Extract text from Word document
+                doc = docx.Document(io.BytesIO(file_data))
+                paragraphs = []
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        paragraphs.append(para.text)
+                
+                full_text = '\n'.join(paragraphs)
+                
+                # Also extract text from tables
+                for table in doc.tables:
+                    table_text = []
+                    for row in table.rows:
+                        row_text = ' | '.join([cell.text.strip() for cell in row.cells])
+                        table_text.append(row_text)
+                    if table_text:
+                        full_text += '\n\nТаблица:\n' + '\n'.join(table_text)
+                
+                if full_text:
+                    if len(full_text) > 5000:
+                        full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
+                    result = {
+                        'type': 'docx',
+                        'filename': filename,
+                        'content': full_text,
+                        'description': f'Word документ {filename}:\n{full_text}'
+                    }
+                    
+                    # Добавляем информацию о хранилище, если файл был сохранен
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    
+                    return result
+                else:
+                    result = {
+                        'type': 'docx',
+                        'filename': filename,
+                        'description': f'Word документ: {filename} (документ пуст)'
+                    }
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    return result
+            except ImportError:
+                return {
+                    'type': 'docx',
+                    'filename': filename,
+                    'description': f'Word документ: {filename} (библиотека python-docx не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'docx',
+                    'filename': filename,
+                    'description': f'Word документ: {filename} (ошибка обработки: {str(e)})'
+                }
+        
+        # Process Excel files (.xlsx)
+        elif content_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or file_extension in ('xlsx', 'xls'):
+            try:
+                import openpyxl
+                
+                # Extract data from Excel
+                workbook = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+                excel_text = []
+                
+                for sheet_name in workbook.sheetnames[:3]:  # Limit to first 3 sheets
+                    sheet = workbook[sheet_name]
+                    excel_text.append(f'\nЛист "{sheet_name}":')
+                    
+                    for row_idx, row in enumerate(sheet.iter_rows(values_only=True), 1):
+                        if row_idx > 50:  # Limit rows per sheet
+                            excel_text.append('[... строки пропущены ...]')
+                            break
+                        row_data = [str(cell) if cell is not None else '' for cell in row]
+                        if any(row_data):  # Skip empty rows
+                            excel_text.append(' | '.join(row_data))
+                
+                full_text = '\n'.join(excel_text)
+                if len(full_text) > 5000:
+                    full_text = full_text[:5000] + '\n\n[... данные обрезаны ...]'
+                
+                result = {
+                    'type': 'excel',
+                    'filename': filename,
+                    'content': full_text,
+                    'description': f'Excel файл {filename}:\n{full_text}'
+                }
+                
+                # Добавляем информацию о хранилище, если файл был сохранен
+                if storage_info:
+                    result['storage'] = storage_info
+                    result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                
+                return result
+            except ImportError:
+                return {
+                    'type': 'excel',
+                    'filename': filename,
+                    'description': f'Excel файл: {filename} (библиотека openpyxl не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'excel',
+                    'filename': filename,
+                    'description': f'Excel файл: {filename} (ошибка обработки: {str(e)})'
+                }
+        
+        # Process text files
+        elif content_type.startswith('text/') or file_extension in ('txt', 'md', 'py', 'js', 'html', 'css', 'json', 'xml', 'csv', 'log', 'yaml', 'yml'):
+            try:
+                text_content = file_data.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    text_content = file_data.decode('latin-1')
+                except:
+                    text_content = f'[Не удалось прочитать содержимое файла {filename}]'
+            
+            # Limit text length
+            if len(text_content) > 5000:
+                text_content = text_content[:5000] + '\n\n[... текст обрезан ...]'
+            
+            result = {
+                'type': 'text',
+                'filename': filename,
+                'content': text_content,
+                'description': f'Текстовый файл {filename}:\n{text_content}'
+            }
+            
+            # Добавляем информацию о хранилище, если файл был сохранен
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+            
+            return result
+        
+        # Other file types
+        else:
+            result = {
+                'type': 'other',
+                'filename': filename,
+                'content_type': content_type,
+                'description': f'Файл: {filename} (тип: {content_type}) - содержимое не может быть обработано автоматически'
+            }
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+            return result
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            'type': 'error',
+            'filename': file.filename if hasattr(file, 'filename') else 'unknown',
+            'error': str(e),
+            'description': f'Ошибка обработки файла {file.filename if hasattr(file, "filename") else "unknown"}: {str(e)}'
+        }
+
+
+@app.route('/api/chat/with-files', methods=['POST'])
+@app.route('/chat/with-files', methods=['POST'])
+def chat_with_files():
+    """Chat endpoint with file upload support"""
+    try:
+        # Get form data
+        message = request.form.get('message', '')
+        provider_name = request.form.get('provider', 'openai')
+        
+        try:
+            temperature = float(request.form.get('temperature', 0.7))
+        except (ValueError, TypeError):
+            temperature = 0.7
+        
+        try:
+            max_tokens = int(request.form.get('maxTokens', 2000))
+        except (ValueError, TypeError):
+            max_tokens = 2000
+        
+        # Get user info
+        user_id = request.form.get('user_id')
+        user_name = request.form.get('user_first_name')
+        username = request.form.get('user_username')
+        
+        # Process uploaded files
+        file_descriptions = []
+        file_keys = [key for key in request.files.keys() if key.startswith('file_')]
+        file_keys.sort()  # Sort to maintain order
+        
+        for file_key in file_keys:
+            file = request.files[file_key]
+            if file and file.filename:
+                file_info = process_file(file)
+                file_descriptions.append(file_info['description'])
+        
+        # Combine message with file descriptions
+        if file_descriptions:
+            files_text = '\n\nПрикрепленные файлы:\n' + '\n'.join([f'- {desc}' for desc in file_descriptions])
+            full_message = message + files_text if message else files_text
+        else:
+            full_message = message
+        
+        if not full_message.strip():
+            return jsonify({
+                'success': False,
+                'error': 'Message or files are required'
+            }), 400
+        
+        # Get or create chat session
+        chat_id = None
+        messages_history = []
+        if user_id:
+            chat_id = get_or_create_chat(user_id, user_name, username, provider_name)
+            # Load chat history
+            history = get_chat_history(chat_id)
+            # Convert to format expected by providers
+            messages_history = [
+                {"role": msg['role'], "content": msg['content']}
+                for msg in history
+            ]
+        
+        provider = get_provider(provider_name)
+        
+        # Add current user message to history
+        messages_history.append({"role": "user", "content": full_message})
+        
+        # Save user message to database
+        if chat_id and user_id:
+            try:
+                save_message(chat_id, "user", full_message, provider_name, temperature, max_tokens)
+            except Exception as db_error:
+                print(f"WARNING: Failed to save user message to database: {str(db_error)}")
+        
+        def generate():
+            full_response = ""
+            try:
+                for chunk in provider.stream(
+                    full_message,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    messages=messages_history if messages_history else None
+                ):
+                    if chunk:
+                        full_response += chunk
+                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                
+                # Save assistant response to database
+                if chat_id and user_id and full_response:
+                    try:
+                        save_message(chat_id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    except Exception as db_error:
+                        print(f"WARNING: Failed to save message to database: {str(db_error)}")
+                
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                error_msg = str(e)
+                error_type = type(e).__name__
+                print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                yield "data: [DONE]\n\n"
+        
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+    
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 

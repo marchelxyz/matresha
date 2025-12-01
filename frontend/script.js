@@ -16,6 +16,9 @@ const temperature = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
 const maxTokens = document.getElementById('maxTokens');
 const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
+const fileInput = document.getElementById('fileInput');
+const fileButton = document.getElementById('fileButton');
+const attachedFiles = document.getElementById('attachedFiles');
 
 // State
 let isProcessing = false;
@@ -25,6 +28,7 @@ let currentSettings = {
     maxTokens: 2000
 };
 let markdownParser = null;
+let selectedFiles = []; // Массив выбранных файлов
 
 // Provider configurations
 const providers = {
@@ -189,6 +193,15 @@ function setupEventListeners() {
     // Send button
     sendButton.addEventListener('click', sendMessage);
     
+    // File button
+    if (fileButton && fileInput) {
+        fileButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', handleFileSelect);
+    }
+    
     // Auto-resize textarea
     messageInput.addEventListener('input', autoResizeTextarea);
     
@@ -341,8 +354,8 @@ function handleInputChange() {
     const text = messageInput.value;
     charCount.textContent = `${text.length}/4000`;
     
-    // Enable/disable send button
-    sendButton.disabled = text.trim().length === 0 || isProcessing;
+    // Enable/disable send button (можно отправить если есть текст или файлы)
+    sendButton.disabled = (text.trim().length === 0 && selectedFiles.length === 0) || isProcessing;
 }
 
 // Handle key down events
@@ -359,15 +372,91 @@ function autoResizeTextarea() {
     messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
 }
 
+// Handle file selection
+function handleFileSelect(event) {
+    const files = Array.from(event.target.files);
+    
+    // Проверяем размер файлов (максимум 10MB на файл)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const validFiles = files.filter(file => {
+        if (file.size > maxSize) {
+            alert(`Файл "${file.name}" слишком большой. Максимальный размер: 10MB`);
+            return false;
+        }
+        return true;
+    });
+    
+    // Добавляем файлы к выбранным
+    selectedFiles = [...selectedFiles, ...validFiles];
+    
+    // Обновляем отображение прикрепленных файлов
+    updateAttachedFilesDisplay();
+    
+    // Очищаем input для возможности повторного выбора того же файла
+    event.target.value = '';
+}
+
+// Update attached files display
+function updateAttachedFilesDisplay() {
+    if (!attachedFiles) return;
+    
+    attachedFiles.innerHTML = '';
+    
+    if (selectedFiles.length === 0) {
+        attachedFiles.style.display = 'none';
+        return;
+    }
+    
+    attachedFiles.style.display = 'flex';
+    attachedFiles.style.flexWrap = 'wrap';
+    attachedFiles.style.gap = '8px';
+    attachedFiles.style.marginBottom = '8px';
+    
+    selectedFiles.forEach((file, index) => {
+        const fileTag = document.createElement('div');
+        fileTag.className = 'file-tag';
+        fileTag.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <button type="button" class="file-remove" data-index="${index}" aria-label="Удалить файл">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill="currentColor"/>
+                </svg>
+            </button>
+        `;
+        
+        // Обработчик удаления файла
+        const removeBtn = fileTag.querySelector('.file-remove');
+        removeBtn.addEventListener('click', () => {
+            selectedFiles.splice(index, 1);
+            updateAttachedFilesDisplay();
+        });
+        
+        attachedFiles.appendChild(fileTag);
+    });
+}
+
 // Send message
 async function sendMessage() {
     const text = messageInput.value.trim();
-    if (!text || isProcessing) return;
+    const hasFiles = selectedFiles.length > 0;
+    
+    if ((!text && !hasFiles) || isProcessing) return;
     
     // Add user message
-    addMessage(text, 'user');
+    const messageText = text || (hasFiles ? `Прикреплено файлов: ${selectedFiles.length}` : '');
+    addMessage(messageText, 'user');
     
-    // Clear input
+    // Если есть файлы, показываем их в сообщении
+    if (hasFiles) {
+        selectedFiles.forEach(file => {
+            const fileInfo = document.createElement('div');
+            fileInfo.className = 'file-info';
+            fileInfo.textContent = `📎 ${file.name} (${formatFileSize(file.size)})`;
+            // Можно добавить fileInfo в последнее сообщение пользователя
+        });
+    }
+    
+    // Clear input and files
     messageInput.value = '';
     autoResizeTextarea();
     handleInputChange();
@@ -380,14 +469,119 @@ async function sendMessage() {
     const botMessageDiv = createBotMessageContainer();
     
     try {
-        // Try to use API with streaming
-        await streamAIResponse(text, botMessageDiv);
+        // Если есть файлы, загружаем их и отправляем вместе с текстом
+        if (hasFiles) {
+            await sendMessageWithFiles(text, selectedFiles, botMessageDiv);
+            // Очищаем файлы после отправки
+            selectedFiles = [];
+            updateAttachedFilesDisplay();
+        } else {
+            // Try to use API with streaming
+            await streamAIResponse(text, botMessageDiv);
+        }
     } catch (error) {
         console.error('Error:', error);
         updateBotMessage(botMessageDiv, 'Извините, произошла ошибка. Попробуйте еще раз.');
     } finally {
         isProcessing = false;
-        sendButton.disabled = messageInput.value.trim().length === 0;
+        sendButton.disabled = messageInput.value.trim().length === 0 && selectedFiles.length === 0;
+    }
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Send message with files
+async function sendMessageWithFiles(text, files, botMessageContainer) {
+    try {
+        // Загружаем файлы на сервер
+        const formData = new FormData();
+        formData.append('message', text || '');
+        formData.append('provider', currentProvider);
+        formData.append('temperature', currentSettings.temperature);
+        formData.append('maxTokens', currentSettings.maxTokens);
+        
+        files.forEach((file, index) => {
+            formData.append(`file_${index}`, file);
+        });
+        
+        // Извлекаем данные пользователя
+        const userData = tg.initDataUnsafe?.user ? {
+            id: tg.initDataUnsafe.user.id,
+            first_name: tg.initDataUnsafe.user.first_name,
+            username: tg.initDataUnsafe.user.username
+        } : undefined;
+        
+        if (userData) {
+            formData.append('user_id', userData.id);
+            formData.append('user_first_name', userData.first_name || '');
+            formData.append('user_username', userData.username || '');
+        }
+        
+        // Отправляем запрос с файлами
+        const response = await fetch(`${api.baseURL}/chat/with-files`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Обрабатываем потоковый ответ
+        if (response.body && typeof response.body.getReader === 'function') {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = '';
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+                        
+                        try {
+                            const json = JSON.parse(data);
+                            if (json.content) {
+                                fullText += json.content;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        } catch (e) {
+                            if (data.trim()) {
+                                fullText += data;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        }
+                    } else if (line.trim()) {
+                        fullText += line;
+                        updateBotMessage(botMessageContainer, fullText);
+                    }
+                }
+            }
+        } else {
+            // Fallback для не-потокового ответа
+            const result = await response.json();
+            if (result.success && result.data.response) {
+                updateBotMessage(botMessageContainer, result.data.response);
+            } else {
+                throw new Error('Invalid response');
+            }
+        }
+    } catch (error) {
+        console.error('Error sending message with files:', error);
+        throw error;
     }
 }
 
@@ -603,7 +797,15 @@ function addMessage(text, sender) {
 
 // Scroll to bottom
 function scrollToBottom() {
+    if (!chatMessages) return;
+    
     requestAnimationFrame(() => {
+        // Используем scrollTo для более надежной прокрутки
+        chatMessages.scrollTo({
+            top: chatMessages.scrollHeight,
+            behavior: 'smooth'
+        });
+        // Также устанавливаем напрямую для немедленного эффекта
         chatMessages.scrollTop = chatMessages.scrollHeight;
         // Скрыть кнопку после прокрутки вниз
         updateScrollButtonVisibility();
@@ -614,24 +816,27 @@ function scrollToBottom() {
 function updateScrollButtonVisibility() {
     if (!scrollToBottomBtn || !chatMessages) return;
     
-    // Проверяем, есть ли контент для прокрутки
-    const hasScrollableContent = chatMessages.scrollHeight > chatMessages.clientHeight;
-    
-    if (!hasScrollableContent) {
-        // Если контента нет или он помещается на экране, скрываем кнопку
-        scrollToBottomBtn.classList.remove('show');
-        return;
-    }
-    
-    // Проверяем, находится ли пользователь внизу (с небольшим допуском в 100px)
-    const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-    const isAtBottom = scrollBottom < 100;
-    
-    if (isAtBottom) {
-        scrollToBottomBtn.classList.remove('show');
-    } else {
-        scrollToBottomBtn.classList.add('show');
-    }
+    // Небольшая задержка для корректного расчета размеров после рендеринга
+    requestAnimationFrame(() => {
+        // Проверяем, есть ли контент для прокрутки
+        const hasScrollableContent = chatMessages.scrollHeight > chatMessages.clientHeight;
+        
+        if (!hasScrollableContent) {
+            // Если контента нет или он помещается на экране, скрываем кнопку
+            scrollToBottomBtn.classList.remove('show');
+            return;
+        }
+        
+        // Проверяем, находится ли пользователь внизу (с небольшим допуском в 100px)
+        const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+        const isAtBottom = scrollBottom < 100;
+        
+        if (isAtBottom) {
+            scrollToBottomBtn.classList.remove('show');
+        } else {
+            scrollToBottomBtn.classList.add('show');
+        }
+    });
 }
 
 // Scroll to bottom button click handler
@@ -654,7 +859,7 @@ async function loadChatHistory() {
         if (result.success && result.data) {
             // If we have a specific chat with messages, load them
             if (result.data.messages && result.data.messages.length > 0) {
-                // Clear existing messages (if any)
+                // Clear existing messages (if any) - удаляем приветственное сообщение тоже
                 chatMessages.innerHTML = '';
                 
                 // Load messages from history
@@ -664,14 +869,19 @@ async function loadChatHistory() {
                     }
                 });
                 
-                // Прокрутить вниз после загрузки всех сообщений
+                // Прокрутить вниз после загрузки всех сообщений - используем несколько попыток
+                // для гарантии прокрутки после полного рендеринга
                 setTimeout(() => {
                     scrollToBottom();
-                    // Дополнительная проверка видимости кнопки после рендеринга
                     setTimeout(() => {
+                        scrollToBottom();
                         updateScrollButtonVisibility();
-                    }, 200);
-                }, 100);
+                    }, 100);
+                    setTimeout(() => {
+                        scrollToBottom();
+                        updateScrollButtonVisibility();
+                    }, 300);
+                }, 50);
                 console.log(`Loaded ${result.data.messages.length} messages from history`);
             } else if (result.data.chats && result.data.chats.length > 0) {
                 // If we have chats but no messages, load the most recent chat's messages
@@ -685,14 +895,18 @@ async function loadChatHistory() {
                                 addMessageFromHistory(msg.content, msg.role);
                             }
                         });
-                        // Прокрутить вниз после загрузки всех сообщений
+                        // Прокрутить вниз после загрузки всех сообщений - используем несколько попыток
                         setTimeout(() => {
                             scrollToBottom();
-                            // Дополнительная проверка видимости кнопки после рендеринга
                             setTimeout(() => {
+                                scrollToBottom();
                                 updateScrollButtonVisibility();
-                            }, 200);
-                        }, 100);
+                            }, 100);
+                            setTimeout(() => {
+                                scrollToBottom();
+                                updateScrollButtonVisibility();
+                            }, 300);
+                        }, 50);
                         console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
                     }
                 }
