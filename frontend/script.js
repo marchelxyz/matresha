@@ -159,6 +159,13 @@ async function initApp() {
     setTimeout(() => {
         updateScrollButtonVisibility();
     }, 200);
+    
+    // Также проверяем при изменении размера окна
+    window.addEventListener('resize', () => {
+        setTimeout(() => {
+            updateScrollButtonVisibility();
+        }, 100);
+    });
 }
 
 // Setup event listeners
@@ -186,6 +193,18 @@ function setupEventListeners() {
             updateScrollButtonVisibility();
         });
         resizeObserver.observe(chatMessages);
+        
+        // Отслеживаем изменения в DOM для появления новых сообщений
+        const mutationObserver = new MutationObserver(() => {
+            // Небольшая задержка, чтобы DOM успел обновиться
+            setTimeout(() => {
+                updateScrollButtonVisibility();
+            }, 50);
+        });
+        mutationObserver.observe(chatMessages, {
+            childList: true,
+            subtree: true
+        });
     }
     
     // Provider selector (если существует)
@@ -575,8 +594,18 @@ function scrollToBottom() {
 function updateScrollButtonVisibility() {
     if (!scrollToBottomBtn || !chatMessages) return;
     
+    // Проверяем, есть ли контент для прокрутки
+    const hasScrollableContent = chatMessages.scrollHeight > chatMessages.clientHeight;
+    
+    if (!hasScrollableContent) {
+        // Если контента нет или он помещается на экране, скрываем кнопку
+        scrollToBottomBtn.classList.remove('show');
+        return;
+    }
+    
     // Проверяем, находится ли пользователь внизу (с небольшим допуском в 100px)
-    const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+    const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+    const isAtBottom = scrollBottom < 100;
     
     if (isAtBottom) {
         scrollToBottomBtn.classList.remove('show');
@@ -618,6 +647,10 @@ async function loadChatHistory() {
                 // Прокрутить вниз после загрузки всех сообщений
                 setTimeout(() => {
                     scrollToBottom();
+                    // Дополнительная проверка видимости кнопки после рендеринга
+                    setTimeout(() => {
+                        updateScrollButtonVisibility();
+                    }, 200);
                 }, 100);
                 console.log(`Loaded ${result.data.messages.length} messages from history`);
             } else if (result.data.chats && result.data.chats.length > 0) {
@@ -635,6 +668,10 @@ async function loadChatHistory() {
                         // Прокрутить вниз после загрузки всех сообщений
                         setTimeout(() => {
                             scrollToBottom();
+                            // Дополнительная проверка видимости кнопки после рендеринга
+                            setTimeout(() => {
+                                updateScrollButtonVisibility();
+                            }, 200);
                         }, 100);
                         console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
                     }
