@@ -23,13 +23,33 @@ body {
     margin: 0 auto;
 }
 
+/* Telegram Header Spacer - визуальное поле для кнопок Telegram Mini App */
+.telegram-header-spacer {
+    height: 44px;
+    background: var(--tg-theme-bg-color, #ffffff);
+    border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
+    position: sticky;
+    top: 0;
+    z-index: 101;
+    flex-shrink: 0;
+    /* Имитация панели Telegram с градиентом */
+    background: linear-gradient(
+        to bottom,
+        var(--tg-theme-bg-color, #ffffff) 0%,
+        var(--tg-theme-bg-color, #ffffff) 70%,
+        rgba(255, 255, 255, 0.95) 100%
+    );
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
 /* Header */
 .header {
     background: var(--tg-theme-secondary-bg-color, #ffffff);
     border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
     padding: 12px 16px;
     position: sticky;
-    top: 0;
+    top: 44px; /* Расположен под spacer'ом */
     z-index: 100;
     backdrop-filter: blur(10px);
     background: rgba(255, 255, 255, 0.9);
@@ -558,6 +578,15 @@ body {
         --tg-theme-secondary-bg-color: #2d2d2d;
         --tg-theme-button-color: #007bff;
         --tg-theme-button-text-color: #ffffff;
+    }
+    
+    .telegram-header-spacer {
+        background: linear-gradient(
+            to bottom,
+            var(--tg-theme-bg-color, #1a1a1a) 0%,
+            var(--tg-theme-bg-color, #1a1a1a) 70%,
+            rgba(26, 26, 26, 0.95) 100%
+        );
     }
     
     .header {
