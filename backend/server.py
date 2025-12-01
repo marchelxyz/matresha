@@ -364,7 +364,7 @@ def get_provider(provider_name):
 
 # Database helper functions
 def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'):
-    """Get existing chat or create new one for user"""
+    """Get existing chat or create new one for user. Returns chat_id (int)."""
     db = next(get_db())
     try:
         # Try to get the most recent chat for this user
@@ -389,7 +389,9 @@ def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'
             chat.updated_at = datetime.now(timezone.utc)
             db.commit()
         
-        return chat
+        # Сохраняем chat_id до закрытия сессии, чтобы избежать DetachedInstanceError
+        chat_id = chat.id
+        return chat_id
     finally:
         db.close()
 
@@ -575,12 +577,12 @@ def chat():
             }), 400
         
         # Get or create chat session
-        chat = None
+        chat_id = None
         messages_history = []
         if user_id:
-            chat = get_or_create_chat(user_id, user_name, username, provider_name)
+            chat_id = get_or_create_chat(user_id, user_name, username, provider_name)
             # Load chat history
-            history = get_chat_history(chat.id)
+            history = get_chat_history(chat_id)
             # Convert to format expected by providers
             messages_history = [
                 {"role": msg['role'], "content": msg['content']}
@@ -600,16 +602,16 @@ def chat():
         )
         
         # Save messages to database
-        if chat and user_id:
-            save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
-            save_message(chat.id, "assistant", response, provider_name, temperature, max_tokens)
+        if chat_id and user_id:
+            save_message(chat_id, "user", message, provider_name, temperature, max_tokens)
+            save_message(chat_id, "assistant", response, provider_name, temperature, max_tokens)
         
         return jsonify({
             'success': True,
             'data': {
                 'response': response,
                 'provider': provider_name,
-                'chat_id': chat.id if chat else None
+                'chat_id': chat_id
             }
         })
     
@@ -688,13 +690,10 @@ def chat_stream():
             }), 400
         
         # Get or create chat session
-        chat = None
         chat_id = None
         messages_history = []
         if user_id:
-            chat = get_or_create_chat(user_id, user_name, username, provider_name)
-            # Сохраняем chat.id сразу после получения, пока объект еще связан с сессией
-            chat_id = chat.id
+            chat_id = get_or_create_chat(user_id, user_name, username, provider_name)
             # Load chat history
             history = get_chat_history(chat_id)
             # Convert to format expected by providers
