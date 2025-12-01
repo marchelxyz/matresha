@@ -176,12 +176,20 @@ class MockAIAPI extends AIAPI {
 // Initialize API instance
 // Try to detect if we're in a real environment
 let api;
-if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+
+// Check if API_BASE_URL is explicitly set (production)
+if (window.API_BASE_URL && window.API_BASE_URL !== '/api' && !window.API_BASE_URL.includes('localhost')) {
+    // Production mode with explicit API URL - use real API
+    api = new AIAPI();
+    console.log('Using real API:', window.API_BASE_URL);
+} else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     // Development mode - use mock API
     api = new MockAIAPI();
+    console.log('Using mock API (development mode)');
 } else {
-    // Production mode - use real API
+    // Production mode - try real API first
     api = new AIAPI();
+    console.log('Using real API (production mode, default /api)');
 }
 
 // Export for use in other files

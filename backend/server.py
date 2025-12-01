@@ -261,7 +261,24 @@ def get_provider(provider_name):
     if not provider_class:
         raise ValueError(f"Unknown provider: {provider_name}")
     
-    return provider_class()
+    provider = provider_class()
+    
+    # Check if API key is configured
+    if not provider.api_key:
+        env_var_name = {
+            'openai': 'OPENAI_API_KEY',
+            'gemini': 'GEMINI_API_KEY',
+            'claude': 'ANTHROPIC_API_KEY',
+            'groq': 'GROQ_API_KEY',
+            'mistral': 'MISTRAL_API_KEY'
+        }.get(provider_name, f'{provider_name.upper()}_API_KEY')
+        
+        raise ValueError(
+            f"{provider_name.capitalize()} API key not configured. "
+            f"Please set {env_var_name} environment variable."
+        )
+    
+    return provider
 
 
 @app.route('/api/health', methods=['GET'])
@@ -280,19 +297,30 @@ def health():
 def get_providers():
     """Get list of available providers"""
     available = []
+    provider_status = {}
+    
     for name, provider_class in PROVIDERS.items():
         try:
             provider = provider_class()
-            if provider.api_key:
+            has_key = bool(provider.api_key)
+            provider_status[name] = {
+                'available': has_key,
+                'has_key': has_key
+            }
+            if has_key:
                 available.append(name)
-        except:
-            pass
+        except Exception as e:
+            provider_status[name] = {
+                'available': False,
+                'error': str(e)
+            }
     
     return jsonify({
         'success': True,
         'data': {
             'providers': available,
-            'all': list(PROVIDERS.keys())
+            'all': list(PROVIDERS.keys()),
+            'status': provider_status
         }
     })
 

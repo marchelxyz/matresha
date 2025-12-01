@@ -71,6 +71,11 @@ const TelegramConfig = {
     }
 };
 
+// Set global API_BASE_URL if configured
+if (TelegramConfig.API_BASE_URL && TelegramConfig.API_BASE_URL !== 'https://your-api-domain.com/api') {
+    window.API_BASE_URL = TelegramConfig.API_BASE_URL;
+}
+
 // Export for use in other files
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = TelegramConfig;
