@@ -48,27 +48,24 @@ class YandexStorage:
             print("INFO: Yandex Object Storage not configured. Files will be processed in memory.")
     
     def _ensure_bucket_exists(self):
-        """Проверяет существование бакета, создает если не существует"""
+        """Проверяет существование бакета"""
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
+            print(f"✓ Бакет '{self.bucket_name}' доступен")
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == '404':
-                # Бакет не существует, создаем его
-                try:
-                    self.s3_client.create_bucket(
-                        Bucket=self.bucket_name,
-                        CreateBucketConfiguration={
-                            'LocationConstraint': self.region
-                        }
-                    )
-                    print(f"Created bucket: {self.bucket_name}")
-                except Exception as create_error:
-                    print(f"ERROR: Failed to create bucket: {create_error}")
+                print(f"ERROR: Бакет '{self.bucket_name}' не найден!")
+                print(f"      Создайте бакет в консоли Yandex Cloud:")
+                print(f"      https://console.yandex.cloud/storage")
+                print(f"      Или используйте команду:")
+                print(f"      yc storage bucket create --name {self.bucket_name} --region {self.region}")
             elif error_code == '403':
-                print(f"ERROR: Access denied to bucket {self.bucket_name}")
+                print(f"ERROR: Доступ запрещен к бакету '{self.bucket_name}'")
+                print(f"      Проверьте права доступа сервисного аккаунта")
             else:
-                print(f"ERROR: Failed to check bucket: {e}")
+                print(f"ERROR: Не удалось проверить бакет: {e}")
+                print(f"      Код ошибки: {error_code}")
     
     def upload_file(self, file_data: bytes, filename: str, content_type: str = None, 
                    folder: str = 'uploads') -> Optional[Dict]:
