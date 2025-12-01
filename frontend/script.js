@@ -515,5 +515,78 @@ function addMessageFromHistory(text, sender) {
     chatMessages.appendChild(messageDiv);
 }
 
+// Copy table to clipboard (global function for onclick handlers)
+window.copyTableToClipboard = function(button) {
+    const tableWrapper = button.closest('.table-wrapper');
+    const table = tableWrapper.querySelector('table');
+    
+    if (!table) return;
+    
+    // Extract table data
+    const rows = [];
+    const headerRow = [];
+    
+    // Get headers
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach(th => {
+        headerRow.push(th.textContent.trim());
+    });
+    rows.push(headerRow);
+    
+    // Get data rows
+    const dataRows = table.querySelectorAll('tbody tr');
+    dataRows.forEach(tr => {
+        const row = [];
+        const cells = tr.querySelectorAll('td');
+        cells.forEach(td => {
+            row.push(td.textContent.trim());
+        });
+        rows.push(row);
+    });
+    
+    // Format as markdown table
+    let markdown = '';
+    rows.forEach((row, index) => {
+        markdown += '| ' + row.join(' | ') + ' |\n';
+        if (index === 0) {
+            // Add separator row
+            markdown += '|' + row.map(() => '---').join('|') + '|\n';
+        }
+    });
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(markdown.trim()).then(() => {
+        // Show feedback
+        const originalText = button.textContent;
+        button.textContent = '✓';
+        button.style.background = '#4caf50';
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback: select text
+        const textArea = document.createElement('textarea');
+        textArea.value = markdown.trim();
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            button.textContent = '✓';
+            button.style.background = '#4caf50';
+            setTimeout(() => {
+                button.textContent = '📋';
+                button.style.background = '';
+            }, 2000);
+        } catch (e) {
+            alert('Не удалось скопировать таблицу. Попробуйте выделить текст вручную.');
+        }
+        document.body.removeChild(textArea);
+    });
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
