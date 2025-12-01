@@ -164,38 +164,13 @@ class GroqProvider(AIProvider):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
         try:
             from groq import Groq
-            # Groq client only supports api_key parameter, not proxies
-            # Create client with explicit api_key only - do not pass any other kwargs
+            # Groq client initialization - updated to work with groq >= 0.36.0
             if self.api_key:
-                # Use inspect to verify Groq constructor signature and pass only supported params
-                import inspect
-                sig = inspect.signature(Groq.__init__)
-                # Only pass api_key if it's in the signature
-                if 'api_key' in sig.parameters:
-                    self.client = Groq(api_key=self.api_key)
-                else:
-                    # Fallback: try with just api_key as positional or keyword
-                    self.client = Groq(api_key=self.api_key)
+                self.client = Groq(api_key=self.api_key)
             else:
                 self.client = None
         except ImportError:
             self.client = None
-        except TypeError as e:
-            # Handle TypeError specifically - this is what happens when proxies is passed
-            error_msg = str(e)
-            print(f"ERROR: Failed to initialize Groq client (TypeError): {error_msg}")
-            if 'proxies' in error_msg.lower():
-                # If proxies error, try creating client without any extra params
-                # This shouldn't happen, but handle it gracefully
-                print("WARNING: Groq client received proxies parameter - this should not happen")
-                try:
-                    # Try with minimal initialization
-                    self.client = Groq(api_key=self.api_key)
-                except Exception as e2:
-                    print(f"ERROR: Retry failed: {e2}")
-                    self.client = None
-            else:
-                self.client = None
         except Exception as e:
             # Log the error for debugging
             error_msg = str(e)
