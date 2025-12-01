@@ -8,6 +8,7 @@ import os
 import json
 import time
 import base64
+import io
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, Response, stream_with_context, g
 from flask_cors import CORS
@@ -779,23 +780,174 @@ def process_file(file):
     try:
         filename = secure_filename(file.filename)
         content_type = file.content_type or ''
+        file_extension = filename.lower().split('.')[-1] if '.' in filename else ''
+        
+        # Read file data once (file.read() moves the file pointer)
+        file.seek(0)  # Reset file pointer to beginning
+        file_data = file.read()
         
         # Process images
         if content_type.startswith('image/'):
-            # Read image as base64
-            file_data = file.read()
             file_base64 = base64.b64encode(file_data).decode('utf-8')
+            
+            # Try to extract image metadata using Pillow
+            image_info = f'Изображение: {filename}'
+            try:
+                from PIL import Image
+                img = Image.open(io.BytesIO(file_data))
+                width, height = img.size
+                image_info += f' ({width}x{height}px)'
+            except Exception:
+                pass
+            
             return {
                 'type': 'image',
                 'filename': filename,
                 'content_type': content_type,
                 'base64': file_base64,
-                'description': f'Изображение: {filename}'
+                'description': image_info
             }
         
+        # Process PDF files
+        elif content_type == 'application/pdf' or file_extension == 'pdf':
+            try:
+                import pdfplumber
+                
+                # Extract text from PDF
+                text_parts = []
+                with pdfplumber.open(io.BytesIO(file_data)) as pdf:
+                    for i, page in enumerate(pdf.pages[:10]):  # Limit to first 10 pages
+                        text = page.extract_text()
+                        if text:
+                            text_parts.append(f'Страница {i+1}:\n{text}')
+                
+                if text_parts:
+                    full_text = '\n\n'.join(text_parts)
+                    # Limit text length
+                    if len(full_text) > 5000:
+                        full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
+                    return {
+                        'type': 'pdf',
+                        'filename': filename,
+                        'content': full_text,
+                        'description': f'PDF файл {filename}:\n{full_text}'
+                    }
+                else:
+                    return {
+                        'type': 'pdf',
+                        'filename': filename,
+                        'description': f'PDF файл: {filename} (не удалось извлечь текст, возможно это сканированное изображение)'
+                    }
+            except ImportError:
+                return {
+                    'type': 'pdf',
+                    'filename': filename,
+                    'description': f'PDF файл: {filename} (библиотека pdfplumber не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'pdf',
+                    'filename': filename,
+                    'description': f'PDF файл: {filename} (ошибка обработки: {str(e)})'
+                }
+        
+        # Process Word documents (.docx)
+        elif content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or file_extension == 'docx':
+            try:
+                import docx
+                
+                # Extract text from Word document
+                doc = docx.Document(io.BytesIO(file_data))
+                paragraphs = []
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        paragraphs.append(para.text)
+                
+                full_text = '\n'.join(paragraphs)
+                
+                # Also extract text from tables
+                for table in doc.tables:
+                    table_text = []
+                    for row in table.rows:
+                        row_text = ' | '.join([cell.text.strip() for cell in row.cells])
+                        table_text.append(row_text)
+                    if table_text:
+                        full_text += '\n\nТаблица:\n' + '\n'.join(table_text)
+                
+                if full_text:
+                    if len(full_text) > 5000:
+                        full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
+                    return {
+                        'type': 'docx',
+                        'filename': filename,
+                        'content': full_text,
+                        'description': f'Word документ {filename}:\n{full_text}'
+                    }
+                else:
+                    return {
+                        'type': 'docx',
+                        'filename': filename,
+                        'description': f'Word документ: {filename} (документ пуст)'
+                    }
+            except ImportError:
+                return {
+                    'type': 'docx',
+                    'filename': filename,
+                    'description': f'Word документ: {filename} (библиотека python-docx не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'docx',
+                    'filename': filename,
+                    'description': f'Word документ: {filename} (ошибка обработки: {str(e)})'
+                }
+        
+        # Process Excel files (.xlsx)
+        elif content_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or file_extension in ('xlsx', 'xls'):
+            try:
+                import openpyxl
+                
+                # Extract data from Excel
+                workbook = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+                excel_text = []
+                
+                for sheet_name in workbook.sheetnames[:3]:  # Limit to first 3 sheets
+                    sheet = workbook[sheet_name]
+                    excel_text.append(f'\nЛист "{sheet_name}":')
+                    
+                    for row_idx, row in enumerate(sheet.iter_rows(values_only=True), 1):
+                        if row_idx > 50:  # Limit rows per sheet
+                            excel_text.append('[... строки пропущены ...]')
+                            break
+                        row_data = [str(cell) if cell is not None else '' for cell in row]
+                        if any(row_data):  # Skip empty rows
+                            excel_text.append(' | '.join(row_data))
+                
+                full_text = '\n'.join(excel_text)
+                if len(full_text) > 5000:
+                    full_text = full_text[:5000] + '\n\n[... данные обрезаны ...]'
+                
+                return {
+                    'type': 'excel',
+                    'filename': filename,
+                    'content': full_text,
+                    'description': f'Excel файл {filename}:\n{full_text}'
+                }
+            except ImportError:
+                return {
+                    'type': 'excel',
+                    'filename': filename,
+                    'description': f'Excel файл: {filename} (библиотека openpyxl не установлена)'
+                }
+            except Exception as e:
+                return {
+                    'type': 'excel',
+                    'filename': filename,
+                    'description': f'Excel файл: {filename} (ошибка обработки: {str(e)})'
+                }
+        
         # Process text files
-        elif content_type.startswith('text/') or filename.endswith(('.txt', '.md', '.py', '.js', '.html', '.css', '.json')):
-            file_data = file.read()
+        elif content_type.startswith('text/') or file_extension in ('txt', 'md', 'py', 'js', 'html', 'css', 'json', 'xml', 'csv', 'log', 'yaml', 'yml'):
             try:
                 text_content = file_data.decode('utf-8')
             except UnicodeDecodeError:
@@ -804,19 +956,15 @@ def process_file(file):
                 except:
                     text_content = f'[Не удалось прочитать содержимое файла {filename}]'
             
+            # Limit text length
+            if len(text_content) > 5000:
+                text_content = text_content[:5000] + '\n\n[... текст обрезан ...]'
+            
             return {
                 'type': 'text',
                 'filename': filename,
                 'content': text_content,
-                'description': f'Текстовый файл {filename}:\n{text_content[:1000]}...' if len(text_content) > 1000 else f'Текстовый файл {filename}:\n{text_content}'
-            }
-        
-        # Process PDF (basic support - would need pdf library for full support)
-        elif content_type == 'application/pdf' or filename.endswith('.pdf'):
-            return {
-                'type': 'pdf',
-                'filename': filename,
-                'description': f'PDF файл: {filename} (для полной обработки PDF требуется дополнительная библиотека)'
+                'description': f'Текстовый файл {filename}:\n{text_content}'
             }
         
         # Other file types
@@ -825,15 +973,17 @@ def process_file(file):
                 'type': 'other',
                 'filename': filename,
                 'content_type': content_type,
-                'description': f'Файл: {filename} (тип: {content_type})'
+                'description': f'Файл: {filename} (тип: {content_type}) - содержимое не может быть обработано автоматически'
             }
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             'type': 'error',
             'filename': file.filename if hasattr(file, 'filename') else 'unknown',
             'error': str(e),
-            'description': f'Ошибка обработки файла: {str(e)}'
+            'description': f'Ошибка обработки файла {file.filename if hasattr(file, "filename") else "unknown"}: {str(e)}'
         }
 
 
