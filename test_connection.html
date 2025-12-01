@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест подключения Frontend ↔ Backend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .config-section {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .config-section h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .test-section {
+            margin-top: 30px;
+        }
+        .test-item {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #ddd;
+        }
+        .test-item.success {
+            border-left-color: #4caf50;
+            background: #e8f5e9;
+        }
+        .test-item.error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        .test-item.pending {
+            border-left-color: #ff9800;
+            background: #fff3e0;
+        }
+        .test-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .test-status {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .status-icon {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-icon.success {
+            background: #4caf50;
+        }
+        .status-icon.error {
+            background: #f44336;
+        }
+        .status-icon.pending {
+            background: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 Тест подключения Frontend ↔ Backend</h1>
+        <p class="subtitle">Проверка связи между вашими серверами</p>
+
+        <div class="config-section">
+            <h2>⚙️ Конфигурация</h2>
+            <div class="input-group">
+                <label for="backendUrl">Backend URL (например: http://localhost:8000 или https://your-backend.com)</label>
+                <input type="text" id="backendUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
+            </div>
+            <div class="input-group">
+                <label for="apiPath">API Path (обычно: /api)</label>
+                <input type="text" id="apiPath" placeholder="/api" value="/api">
+            </div>
+        </div>
+
+        <div>
+            <button onclick="testAll()">🚀 Запустить все тесты</button>
+            <button onclick="testHealth()">💚 Health Check</button>
+            <button onclick="testProviders()">📋 Providers</button>
+            <button onclick="testChat()">💬 Chat</button>
+            <button onclick="clearResults()">🗑️ Очистить</button>
+        </div>
+
+        <div class="test-section" id="testResults"></div>
+    </div>
+
+    <script>
+        function getBackendUrl() {
+            const backendUrl = document.getElementById('backendUrl').value.trim();
+            const apiPath = document.getElementById('apiPath').value.trim();
+            return `${backendUrl}${apiPath}`;
+        }
+
+        function addTestResult(title, status, message, details = null) {
+            const results = document.getElementById('testResults');
+            const testItem = document.createElement('div');
+            testItem.className = `test-item ${status}`;
+            
+            const iconClass = status === 'success' ? 'success' : status === 'error' ? 'error' : 'pending';
+            const icon = status === 'success' ? '✅' : status === 'error' ? '❌' : '⏳';
+            
+            testItem.innerHTML = `
+                <div class="test-title">
+                    <span class="status-icon ${iconClass}"></span>
+                    ${icon} ${title}
+                </div>
+                <div class="test-status">${message}</div>
+                ${details ? `<div class="test-result">${details}</div>` : ''}
+            `;
+            
+            results.appendChild(testItem);
+            testItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        async function testHealth() {
+            const baseUrl = getBackendUrl();
+            addTestResult('Health Check', 'pending', `Проверка ${baseUrl}/health...`);
+            
+            try {
+                const response = await fetch(`${baseUrl}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addTestResult(
+                    'Health Check',
+                    'success',
+                    `✅ Сервер отвечает! Статус: ${data.status}`,
+                    JSON.stringify(data, null, 2)
+                );
+            } catch (error) {
+                addTestResult(
+                    'Health Check',
+                    'error',
+                    `❌ Ошибка подключения: ${error.message}`,
+                    `Проверьте:\n• Запущен ли backend сервер\n• Правильно ли указан URL\n• Нет ли проблем с CORS\n\nОшибка: ${error.message}`
+                );
+            }
+        }
+
+        async function testProviders() {
+            const baseUrl = getBackendUrl();
+            addTestResult('Providers', 'pending', `Проверка ${baseUrl}/providers...`);
+            
+            try {
+                const response = await fetch(`${baseUrl}/providers`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const providers = data.data?.providers || [];
+                const status = data.data?.status || {};
+                
+                let details = `Доступные провайдеры: ${providers.length > 0 ? providers.join(', ') : 'нет'}\n\n`;
+                details += JSON.stringify(data, null, 2);
+                
+                addTestResult(
+                    'Providers',
+                    providers.length > 0 ? 'success' : 'error',
+                    providers.length > 0 
+                        ? `✅ Найдено ${providers.length} провайдеров: ${providers.join(', ')}`
+                        : `⚠️ Провайдеры не настроены (нет API ключей)`,
+                    details
+                );
+            } catch (error) {
+                addTestResult(
+                    'Providers',
+                    'error',
+                    `❌ Ошибка: ${error.message}`,
+                    error.message
+                );
+            }
+        }
+
+        async function testChat() {
+            const baseUrl = getBackendUrl();
+            addTestResult('Chat', 'pending', `Тест отправки сообщения...`);
+            
+            try {
+                const response = await fetch(`${baseUrl}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Привет! Это тестовое сообщение.',
+                        provider: 'openai',
+                        temperature: 0.7,
+                        maxTokens: 100
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.data?.response) {
+                    addTestResult(
+                        'Chat',
+                        'success',
+                        `✅ Сообщение отправлено и получен ответ!`,
+                        `Ответ: ${data.data.response.substring(0, 200)}${data.data.response.length > 200 ? '...' : ''}\n\nПолный ответ:\n${JSON.stringify(data, null, 2)}`
+                    );
+                } else {
+                    addTestResult(
+                        'Chat',
+                        'error',
+                        `⚠️ Ответ получен, но формат неверный`,
+                        JSON.stringify(data, null, 2)
+                    );
+                }
+            } catch (error) {
+                const errorMsg = error.message || 'Неизвестная ошибка';
+                let details = `Ошибка: ${errorMsg}\n\n`;
+                
+                if (errorMsg.includes('API key not configured')) {
+                    details += '⚠️ API ключ не настроен. Это нормально для теста.\n';
+                    details += 'Для полной проверки настройте OPENAI_API_KEY в .env файле.';
+                } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+                    details += 'Проверьте:\n';
+                    details += '• Запущен ли backend сервер\n';
+                    details += '• Правильно ли указан URL\n';
+                    details += '• Нет ли проблем с CORS\n';
+                }
+                
+                addTestResult(
+                    'Chat',
+                    errorMsg.includes('API key') ? 'pending' : 'error',
+                    errorMsg.includes('API key') 
+                        ? `⚠️ Сервер работает, но API ключ не настроен`
+                        : `❌ Ошибка: ${errorMsg}`,
+                    details
+                );
+            }
+        }
+
+        async function testAll() {
+            clearResults();
+            addTestResult('Начало тестирования', 'pending', 'Запуск всех тестов...');
+            
+            await testHealth();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testProviders();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testChat();
+            
+            addTestResult('Тестирование завершено', 'success', 'Все тесты выполнены!');
+        }
+
+        function clearResults() {
+            document.getElementById('testResults').innerHTML = '';
+        }
+
+        // Автоматический тест при загрузке страницы
+        window.addEventListener('load', () => {
+            console.log('Страница загружена. Готов к тестированию.');
+        });
+    </script>
+</body>
+</html>
