@@ -164,8 +164,44 @@ class GroqProvider(AIProvider):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
         try:
             from groq import Groq
-            self.client = Groq(api_key=self.api_key) if self.api_key else None
+            # Groq client only supports api_key parameter, not proxies
+            # Create client with explicit api_key only - do not pass any other kwargs
+            if self.api_key:
+                # Use inspect to verify Groq constructor signature and pass only supported params
+                import inspect
+                sig = inspect.signature(Groq.__init__)
+                # Only pass api_key if it's in the signature
+                if 'api_key' in sig.parameters:
+                    self.client = Groq(api_key=self.api_key)
+                else:
+                    # Fallback: try with just api_key as positional or keyword
+                    self.client = Groq(api_key=self.api_key)
+            else:
+                self.client = None
         except ImportError:
+            self.client = None
+        except TypeError as e:
+            # Handle TypeError specifically - this is what happens when proxies is passed
+            error_msg = str(e)
+            print(f"ERROR: Failed to initialize Groq client (TypeError): {error_msg}")
+            if 'proxies' in error_msg.lower():
+                # If proxies error, try creating client without any extra params
+                # This shouldn't happen, but handle it gracefully
+                print("WARNING: Groq client received proxies parameter - this should not happen")
+                try:
+                    # Try with minimal initialization
+                    self.client = Groq(api_key=self.api_key)
+                except Exception as e2:
+                    print(f"ERROR: Retry failed: {e2}")
+                    self.client = None
+            else:
+                self.client = None
+        except Exception as e:
+            # Log the error for debugging
+            error_msg = str(e)
+            print(f"ERROR: Failed to initialize Groq client: {error_msg}")
+            import traceback
+            traceback.print_exc()
             self.client = None
     
     def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
@@ -488,7 +524,12 @@ def chat_stream():
                     yield f"data: {json.dumps({'content': chunk})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                # Log the full error for debugging
+                error_msg = str(e)
+                print(f"ERROR: Stream generation failed - {error_msg}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'error': error_msg})}\n\n"
         
         return Response(
             stream_with_context(generate()),
