@@ -172,6 +172,7 @@ body {
     display: flex;
     flex-direction: column;
     width: 100%;
+    max-width: 100%;
     overflow: hidden;
 }
 
@@ -184,14 +185,18 @@ body {
     max-width: 100%;
     margin: 0 auto;
     width: 100%;
+    overflow: hidden; /* Предотвращаем переполнение контейнера */
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden; /* Предотвращаем горизонтальную прокрутку */
     padding: 20px 16px 280px 16px; /* Добавлен padding снизу для панели ввода с glassmorphism */
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
 }
 
 .message {
@@ -200,6 +205,8 @@ body {
     gap: 12px;
     animation: fadeInUp 0.3s ease;
     max-width: 100%;
+    min-width: 0; /* Позволяет flex-элементам сжиматься */
+    overflow: hidden; /* Предотвращает переполнение */
 }
 
 @keyframes fadeInUp {
@@ -254,13 +261,47 @@ body {
     padding: 12px 16px;
     border-radius: 18px 18px 18px 4px;
     word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
     line-height: 1.6;
     background: var(--tg-theme-secondary-bg-color, #f5f5f5);
     color: var(--tg-theme-text-color, #212121);
+    position: relative;
+    min-width: 0; /* Позволяет flex-элементам сжиматься */
 }
 
 .message-text {
     font-size: 15px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    overflow-x: hidden; /* Предотвращает горизонтальную прокрутку */
+}
+
+.message-text pre {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap; /* Сохраняет форматирование, но переносит строки */
+    max-width: 100%;
+    overflow-x: auto; /* Позволяет прокрутку только для очень длинных строк кода */
+}
+
+.message-text code {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap; /* Переносит длинные строки кода */
+    max-width: 100%;
+}
+
+.message-text table {
+    max-width: 100%;
+    table-layout: auto;
+    word-wrap: break-word;
+}
+
+.message-text a {
+    word-break: break-all; /* Разрывает длинные URL */
+    overflow-wrap: break-word;
 }
 
 .message-text h3 {
@@ -907,5 +948,102 @@ body {
     .scroll-to-bottom-btn svg {
         width: 20px;
         height: 20px;
+    }
+}
+
+/* Copy message button */
+.copy-message-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--tg-theme-text-color, #212121);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.2s ease;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.user-message .copy-message-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.message:hover .copy-message-btn,
+.message:active .copy-message-btn,
+.copy-message-btn:hover,
+.copy-message-btn:focus {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* На мобильных устройствах показываем кнопку при касании */
+@media (hover: none) and (pointer: coarse) {
+    .copy-message-btn {
+        opacity: 0.6; /* Показываем с небольшой прозрачностью на мобильных */
+    }
+    
+    .message:active .copy-message-btn,
+    .copy-message-btn:active {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.copy-message-btn:active {
+    transform: scale(0.9);
+}
+
+.copy-message-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.copy-message-btn.copied {
+    background: var(--tg-theme-button-color, #007bff);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    opacity: 1;
+}
+
+.user-message .copy-message-btn.copied {
+    background: rgba(255, 255, 255, 0.3);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+@media (max-width: 768px) {
+    .copy-message-btn {
+        width: 28px;
+        height: 28px;
+        top: 6px;
+        right: 6px;
+    }
+    
+    .copy-message-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .copy-message-btn {
+        width: 26px;
+        height: 26px;
+        top: 4px;
+        right: 4px;
+    }
+    
+    .copy-message-btn svg {
+        width: 14px;
+        height: 14px;
     }
 }

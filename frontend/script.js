@@ -155,10 +155,29 @@ async function initApp() {
     // Load chat history
     await loadChatHistory();
     
+    // Добавить кнопку копирования в приветственное сообщение
+    setTimeout(() => {
+        const welcomeMessage = document.querySelector('.welcome-message .message-text');
+        if (welcomeMessage) {
+            const welcomeContent = welcomeMessage.closest('.message-content');
+            if (welcomeContent && !welcomeContent.querySelector('.copy-message-btn')) {
+                const copyBtn = createCopyButton(welcomeMessage);
+                welcomeContent.appendChild(copyBtn);
+            }
+        }
+    }, 100);
+    
     // Проверить видимость кнопки прокрутки после загрузки
     setTimeout(() => {
         updateScrollButtonVisibility();
     }, 200);
+    
+    // Также проверяем при изменении размера окна
+    window.addEventListener('resize', () => {
+        setTimeout(() => {
+            updateScrollButtonVisibility();
+        }, 100);
+    });
 }
 
 // Setup event listeners
@@ -186,6 +205,18 @@ function setupEventListeners() {
             updateScrollButtonVisibility();
         });
         resizeObserver.observe(chatMessages);
+        
+        // Отслеживаем изменения в DOM для появления новых сообщений
+        const mutationObserver = new MutationObserver(() => {
+            // Небольшая задержка, чтобы DOM успел обновиться
+            setTimeout(() => {
+                updateScrollButtonVisibility();
+            }, 50);
+        });
+        mutationObserver.observe(chatMessages, {
+            childList: true,
+            subtree: true
+        });
     }
     
     // Provider selector (если существует)
@@ -380,6 +411,10 @@ function createBotMessageContainer() {
     textDiv.className = 'message-text';
     textDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
     
+    // Добавляем кнопку копирования (будет обновляться при обновлении сообщения)
+    const copyBtn = createCopyButton(textDiv);
+    contentDiv.appendChild(copyBtn);
+    
     contentDiv.appendChild(textDiv);
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
@@ -387,7 +422,7 @@ function createBotMessageContainer() {
     chatMessages.appendChild(messageDiv);
     scrollToBottom();
     
-    return { messageDiv, textDiv };
+    return { messageDiv, textDiv, copyBtn };
 }
 
 // Update bot message (for streaming)
@@ -555,6 +590,10 @@ function addMessage(text, sender) {
     textDiv.className = 'message-text';
     textDiv.textContent = text;
     
+    // Добавляем кнопку копирования
+    const copyBtn = createCopyButton(textDiv);
+    contentDiv.appendChild(copyBtn);
+    
     contentDiv.appendChild(textDiv);
     messageDiv.appendChild(contentDiv);
     
@@ -575,8 +614,18 @@ function scrollToBottom() {
 function updateScrollButtonVisibility() {
     if (!scrollToBottomBtn || !chatMessages) return;
     
+    // Проверяем, есть ли контент для прокрутки
+    const hasScrollableContent = chatMessages.scrollHeight > chatMessages.clientHeight;
+    
+    if (!hasScrollableContent) {
+        // Если контента нет или он помещается на экране, скрываем кнопку
+        scrollToBottomBtn.classList.remove('show');
+        return;
+    }
+    
     // Проверяем, находится ли пользователь внизу (с небольшим допуском в 100px)
-    const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+    const scrollBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+    const isAtBottom = scrollBottom < 100;
     
     if (isAtBottom) {
         scrollToBottomBtn.classList.remove('show');
@@ -618,6 +667,10 @@ async function loadChatHistory() {
                 // Прокрутить вниз после загрузки всех сообщений
                 setTimeout(() => {
                     scrollToBottom();
+                    // Дополнительная проверка видимости кнопки после рендеринга
+                    setTimeout(() => {
+                        updateScrollButtonVisibility();
+                    }, 200);
                 }, 100);
                 console.log(`Loaded ${result.data.messages.length} messages from history`);
             } else if (result.data.chats && result.data.chats.length > 0) {
@@ -635,6 +688,10 @@ async function loadChatHistory() {
                         // Прокрутить вниз после загрузки всех сообщений
                         setTimeout(() => {
                             scrollToBottom();
+                            // Дополнительная проверка видимости кнопки после рендеринга
+                            setTimeout(() => {
+                                updateScrollButtonVisibility();
+                            }, 200);
                         }, 100);
                         console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
                     }
@@ -682,10 +739,112 @@ function addMessageFromHistory(text, sender) {
         textDiv.textContent = text;
     }
     
+    // Добавляем кнопку копирования
+    const copyBtn = createCopyButton(textDiv);
+    contentDiv.appendChild(copyBtn);
+    
     contentDiv.appendChild(textDiv);
     messageDiv.appendChild(contentDiv);
     
     chatMessages.appendChild(messageDiv);
+}
+
+// Copy message to clipboard
+function copyMessageToClipboard(text, button) {
+    // Получаем чистый текст из HTML, если это HTML элемент
+    let textToCopy = text;
+    if (typeof text !== 'string') {
+        // Если это DOM элемент, извлекаем текст
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = text;
+        textToCopy = tempDiv.textContent || tempDiv.innerText || '';
+    }
+    
+    // Копируем в буфер обмена
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        // Показываем визуальную обратную связь
+        const originalHTML = button.innerHTML;
+        button.classList.add('copied');
+        button.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+            </svg>
+        `;
+        
+        setTimeout(() => {
+            button.classList.remove('copied');
+            button.innerHTML = originalHTML;
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback: используем старый метод
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            const originalHTML = button.innerHTML;
+            button.classList.add('copied');
+            button.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+                </svg>
+            `;
+            setTimeout(() => {
+                button.classList.remove('copied');
+                button.innerHTML = originalHTML;
+            }, 2000);
+        } catch (e) {
+            alert('Не удалось скопировать сообщение');
+        }
+        document.body.removeChild(textArea);
+    });
+}
+
+// Create copy button element
+function createCopyButton(textElement) {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-message-btn';
+    copyBtn.setAttribute('aria-label', 'Копировать сообщение');
+    copyBtn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/>
+        </svg>
+    `;
+    
+    copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Получаем текст из textElement, извлекая чистый текст из HTML
+        let textToCopy = '';
+        
+        // Используем textContent для получения чистого текста без HTML тегов
+        if (textElement.textContent) {
+            textToCopy = textElement.textContent.trim();
+        } else if (textElement.innerText) {
+            textToCopy = textElement.innerText.trim();
+        } else {
+            // Fallback: создаем временный элемент для извлечения текста
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = textElement.innerHTML || '';
+            textToCopy = tempDiv.textContent || tempDiv.innerText || '';
+        }
+        
+        // Если текст пустой, пытаемся получить из innerHTML
+        if (!textToCopy && textElement.innerHTML) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = textElement.innerHTML;
+            textToCopy = tempDiv.textContent || tempDiv.innerText || '';
+        }
+        
+        if (textToCopy) {
+            copyMessageToClipboard(textToCopy, copyBtn);
+        }
+    });
+    
+    return copyBtn;
 }
 
 // Copy table to clipboard (global function for onclick handlers)
