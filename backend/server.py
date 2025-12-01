@@ -63,14 +63,28 @@ class OpenAIProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=message_list,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        
-        return response.choices[0].message.content
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Handle RateLimitError and quota errors
+            if error_type == 'RateLimitError' or 'insufficient_quota' in error_msg.lower() or 'quota' in error_msg.lower():
+                raise ValueError("OpenAI API: Превышена квота использования. Пожалуйста, проверьте ваш план и настройки биллинга. Для получения дополнительной информации: https://platform.openai.com/docs/guides/error-codes/api-errors")
+            elif error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+                raise ValueError("OpenAI API: Неверный API ключ или ключ не настроен")
+            elif 'rate limit' in error_msg.lower():
+                raise ValueError("OpenAI API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            else:
+                raise ValueError(f"OpenAI API ошибка: {error_msg}")
     
     def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
@@ -82,17 +96,31 @@ class OpenAIProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        stream = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=message_list,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True
-        )
-        
-        for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        try:
+            stream = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Handle RateLimitError and quota errors
+            if error_type == 'RateLimitError' or 'insufficient_quota' in error_msg.lower() or 'quota' in error_msg.lower():
+                raise ValueError("OpenAI API: Превышена квота использования. Пожалуйста, проверьте ваш план и настройки биллинга. Для получения дополнительной информации: https://platform.openai.com/docs/guides/error-codes/api-errors")
+            elif error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+                raise ValueError("OpenAI API: Неверный API ключ или ключ не настроен")
+            elif 'rate limit' in error_msg.lower():
+                raise ValueError("OpenAI API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            else:
+                raise ValueError(f"OpenAI API ошибка: {error_msg}")
 
 
 class GeminiProvider(AIProvider):
@@ -1001,6 +1029,14 @@ def chat_stream():
                         print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
                 yield "data: [DONE]\n\n"
+            except ValueError as e:
+                # Handle ValueError (API errors from providers)
+                error_msg = str(e)
+                error_type = type(e).__name__
+                print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                # Send user-friendly error message
+                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                yield "data: [DONE]\n\n"
             except Exception as e:
                 # Log the full error for debugging
                 error_msg = str(e)
@@ -1008,7 +1044,12 @@ def chat_stream():
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                # Provide user-friendly message for quota errors
+                if 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
+                    user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
+                else:
+                    user_msg = f"Ошибка при генерации ответа: {error_msg}"
+                yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
                 yield "data: [DONE]\n\n"
         
         return Response(
@@ -1402,13 +1443,26 @@ def chat_with_files():
                         print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
                 yield "data: [DONE]\n\n"
+            except ValueError as e:
+                # Handle ValueError (API errors from providers)
+                error_msg = str(e)
+                error_type = type(e).__name__
+                print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                # Send user-friendly error message
+                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                yield "data: [DONE]\n\n"
             except Exception as e:
                 error_msg = str(e)
                 error_type = type(e).__name__
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                # Provide user-friendly message for quota errors
+                if 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
+                    user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
+                else:
+                    user_msg = f"Ошибка при генерации ответа: {error_msg}"
+                yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
                 yield "data: [DONE]\n\n"
         
         return Response(
