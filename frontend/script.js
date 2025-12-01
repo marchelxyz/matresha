@@ -72,51 +72,71 @@ function setupEventListeners() {
     // Auto-resize textarea
     messageInput.addEventListener('input', autoResizeTextarea);
     
-    // Provider selector
-    aiProvider.addEventListener('change', handleProviderChange);
+    // Provider selector (если существует)
+    if (aiProvider) {
+        aiProvider.addEventListener('change', handleProviderChange);
+    }
     
-    // Settings
-    settingsBtn.addEventListener('click', () => {
-        settingsModal.classList.add('show');
-        loadSettingsToModal();
-    });
+    // Settings (если существует)
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            if (settingsModal) {
+                settingsModal.classList.add('show');
+                loadSettingsToModal();
+            }
+        });
+    }
     
-    closeSettings.addEventListener('click', () => {
-        settingsModal.classList.remove('show');
-    });
+    if (closeSettings) {
+        closeSettings.addEventListener('click', () => {
+            if (settingsModal) {
+                settingsModal.classList.remove('show');
+            }
+        });
+    }
     
-    settingsModal.addEventListener('click', (e) => {
-        if (e.target === settingsModal) {
-            settingsModal.classList.remove('show');
-        }
-    });
+    if (settingsModal) {
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.classList.remove('show');
+            }
+        });
+    }
     
-    settingsProvider.addEventListener('change', handleProviderChange);
+    if (settingsProvider) {
+        settingsProvider.addEventListener('change', handleProviderChange);
+    }
     
-    temperature.addEventListener('input', (e) => {
-        temperatureValue.textContent = e.target.value;
-        currentSettings.temperature = parseFloat(e.target.value);
-        saveSettings();
-    });
+    if (temperature && temperatureValue) {
+        temperature.addEventListener('input', (e) => {
+            temperatureValue.textContent = e.target.value;
+            currentSettings.temperature = parseFloat(e.target.value);
+            saveSettings();
+        });
+    }
     
-    maxTokens.addEventListener('change', (e) => {
-        currentSettings.maxTokens = parseInt(e.target.value);
-        saveSettings();
-    });
+    if (maxTokens) {
+        maxTokens.addEventListener('change', (e) => {
+            currentSettings.maxTokens = parseInt(e.target.value);
+            saveSettings();
+        });
+    }
 }
 
 // Handle provider change
 function handleProviderChange() {
-    const provider = aiProvider.value || settingsProvider.value;
-    currentProvider = provider;
-    updateProviderInfo();
-    saveSettings();
+    const provider = (aiProvider && aiProvider.value) || (settingsProvider && settingsProvider.value);
+    if (provider) {
+        currentProvider = provider;
+        updateProviderInfo();
+        saveSettings();
+    }
 }
 
 // Update provider info
 function updateProviderInfo() {
     const provider = providers[currentProvider];
-    if (provider) {
+    if (provider && modelInfo) {
         modelInfo.textContent = provider.name;
         if (settingsProvider) {
             settingsProvider.value = currentProvider;
@@ -133,7 +153,9 @@ function loadSettings() {
             currentProvider = settings.provider || 'openai';
             currentSettings.temperature = settings.temperature || 0.7;
             currentSettings.maxTokens = settings.maxTokens || 2000;
-            aiProvider.value = currentProvider;
+            if (aiProvider) {
+                aiProvider.value = currentProvider;
+            }
             updateProviderInfo();
         } catch (e) {
             console.error('Failed to load settings:', e);
@@ -153,10 +175,18 @@ function saveSettings() {
 
 // Load settings to modal
 function loadSettingsToModal() {
-    settingsProvider.value = currentProvider;
-    temperature.value = currentSettings.temperature;
-    temperatureValue.textContent = currentSettings.temperature;
-    maxTokens.value = currentSettings.maxTokens;
+    if (settingsProvider) {
+        settingsProvider.value = currentProvider;
+    }
+    if (temperature) {
+        temperature.value = currentSettings.temperature;
+    }
+    if (temperatureValue) {
+        temperatureValue.textContent = currentSettings.temperature;
+    }
+    if (maxTokens) {
+        maxTokens.value = currentSettings.maxTokens;
+    }
 }
 
 // Handle input changes
