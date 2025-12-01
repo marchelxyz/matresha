@@ -118,6 +118,24 @@ class AIAPI {
     async healthCheck() {
         return this.request('/health');
     }
+
+    // Get chat history
+    async getChatHistory(userId, chatId = null, limit = 50) {
+        const params = new URLSearchParams();
+        if (userId) params.append('user_id', userId);
+        if (chatId) params.append('chat_id', chatId);
+        params.append('limit', limit);
+        
+        return this.request(`/chat/history?${params.toString()}`);
+    }
+
+    // Get messages for a specific chat
+    async getChatMessages(chatId, limit = 50) {
+        const params = new URLSearchParams();
+        params.append('limit', limit);
+        
+        return this.request(`/chat/${chatId}/messages?${params.toString()}`);
+    }
 }
 
 // Mock API for development

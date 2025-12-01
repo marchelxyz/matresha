@@ -53,3 +53,9 @@ secrets.json
 
 # Telegram bot token
 bot-token.txt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+backend/chat_history.db

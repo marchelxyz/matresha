@@ -7,9 +7,14 @@ Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
 import os
 import json
 import time
-from flask import Flask, request, jsonify, Response, stream_with_context
+from datetime import datetime
+from flask import Flask, request, jsonify, Response, stream_with_context, g
 from flask_cors import CORS
 from dotenv import load_dotenv
+from contextlib import contextmanager
+
+# Import database
+from database import SessionLocal, Chat, Message, get_db
 
 # Load environment variables
 load_dotenv()
@@ -42,26 +47,38 @@ class OpenAIProvider(AIProvider):
         except ImportError:
             self.client = None
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("OpenAI API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         response = self.client.chat.completions.create(
             model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens
         )
         
         return response.choices[0].message.content
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("OpenAI API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         stream = self.client.chat.completions.create(
             model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True
@@ -87,12 +104,20 @@ class GeminiProvider(AIProvider):
         except ImportError:
             self.model = None
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.model:
             raise ValueError("Gemini API key not configured")
         
+        # Gemini uses conversation history differently - combine messages
+        if messages:
+            # Combine all messages into a single text with context
+            combined = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+            input_text = combined
+        else:
+            input_text = message
+        
         response = self.model.generate_content(
-            message,
+            input_text,
             generation_config={
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
@@ -101,12 +126,19 @@ class GeminiProvider(AIProvider):
         
         return response.text
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.model:
             raise ValueError("Gemini API key not configured")
         
+        # Gemini uses conversation history differently - combine messages
+        if messages:
+            combined = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+            input_text = combined
+        else:
+            input_text = message
+        
         response = self.model.generate_content(
-            message,
+            input_text,
             generation_config={
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
@@ -130,28 +162,40 @@ class ClaudeProvider(AIProvider):
         except ImportError:
             self.client = None
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Anthropic API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
         
         response = self.client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=max_tokens,
             temperature=temperature,
-            messages=[{"role": "user", "content": message}]
+            messages=message_list
         )
         
         return response.content[0].text
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Anthropic API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
         
         with self.client.messages.stream(
             model="claude-3-opus-20240229",
             max_tokens=max_tokens,
             temperature=temperature,
-            messages=[{"role": "user", "content": message}]
+            messages=message_list
         ) as stream:
             for text in stream.text_stream:
                 yield text
@@ -179,26 +223,38 @@ class GroqProvider(AIProvider):
             traceback.print_exc()
             self.client = None
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Groq API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens
         )
         
         return response.choices[0].message.content
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Groq API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         stream = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True
@@ -226,26 +282,38 @@ class MistralProvider(AIProvider):
         except ImportError:
             self.client = None
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Mistral API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         response = self.client.chat.completions.create(
             model="mistral-large-latest",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens
         )
         
         return response.choices[0].message.content
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
             raise ValueError("Mistral API key not configured")
         
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
         stream = self.client.chat.completions.create(
             model="mistral-large-latest",
-            messages=[{"role": "user", "content": message}],
+            messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True
@@ -290,6 +358,98 @@ def get_provider(provider_name):
         )
     
     return provider
+
+
+# Database helper functions
+def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'):
+    """Get existing chat or create new one for user"""
+    db = next(get_db())
+    try:
+        # Try to get the most recent chat for this user
+        chat = db.query(Chat).filter(
+            Chat.user_id == str(user_id),
+            Chat.provider == provider
+        ).order_by(Chat.updated_at.desc()).first()
+        
+        if not chat:
+            # Create new chat
+            chat = Chat(
+                user_id=str(user_id),
+                user_name=user_name,
+                username=username,
+                provider=provider
+            )
+            db.add(chat)
+            db.commit()
+            db.refresh(chat)
+        else:
+            # Update chat timestamp
+            chat.updated_at = datetime.utcnow()
+            db.commit()
+        
+        return chat
+    finally:
+        db.close()
+
+
+def save_message(chat_id, role, content, provider=None, temperature=None, max_tokens=None):
+    """Save message to database"""
+    db = next(get_db())
+    try:
+        message = Message(
+            chat_id=chat_id,
+            role=role,
+            content=content,
+            provider=provider,
+            temperature=str(temperature) if temperature else None,
+            max_tokens=max_tokens
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return message
+    finally:
+        db.close()
+
+
+def get_chat_history(chat_id, limit=50):
+    """Get chat history messages"""
+    db = next(get_db())
+    try:
+        messages = db.query(Message).filter(
+            Message.chat_id == chat_id
+        ).order_by(Message.created_at.asc()).limit(limit).all()
+        
+        return [msg.to_dict() for msg in messages]
+    finally:
+        db.close()
+
+
+def get_user_chats(user_id, limit=10):
+    """Get user's chat sessions"""
+    db = next(get_db())
+    try:
+        chats = db.query(Chat).filter(
+            Chat.user_id == str(user_id)
+        ).order_by(Chat.updated_at.desc()).limit(limit).all()
+        
+        return [chat.to_dict() for chat in chats]
+    finally:
+        db.close()
+
+
+def get_chat_with_messages(chat_id):
+    """Get chat with all messages"""
+    db = next(get_db())
+    try:
+        chat = db.query(Chat).filter(Chat.id == chat_id).first()
+        if chat:
+            chat_dict = chat.to_dict()
+            chat_dict['messages'] = get_chat_history(chat_id)
+            return chat_dict
+        return None
+    finally:
+        db.close()
 
 
 @app.route('/api/health', methods=['GET'])
@@ -400,24 +560,54 @@ def chat():
         temperature = float(data.get('temperature', 0.7))
         max_tokens = int(data.get('maxTokens', 2000))
         
+        # Get user info
+        user_data = data.get('user', {})
+        user_id = user_data.get('id') if user_data else None
+        user_name = user_data.get('first_name') if user_data else None
+        username = user_data.get('username') if user_data else None
+        
         if not message:
             return jsonify({
                 'success': False,
                 'error': 'Message is required'
             }), 400
         
+        # Get or create chat session
+        chat = None
+        messages_history = []
+        if user_id:
+            chat = get_or_create_chat(user_id, user_name, username, provider_name)
+            # Load chat history
+            history = get_chat_history(chat.id)
+            # Convert to format expected by providers
+            messages_history = [
+                {"role": msg['role'], "content": msg['content']}
+                for msg in history
+            ]
+        
         provider = get_provider(provider_name)
+        
+        # Add current user message to history
+        messages_history.append({"role": "user", "content": message})
+        
         response = provider.generate(
             message,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            messages=messages_history if messages_history else None
         )
+        
+        # Save messages to database
+        if chat and user_id:
+            save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
+            save_message(chat.id, "assistant", response, provider_name, temperature, max_tokens)
         
         return jsonify({
             'success': True,
             'data': {
                 'response': response,
-                'provider': provider_name
+                'provider': provider_name,
+                'chat_id': chat.id if chat else None
             }
         })
     
@@ -456,6 +646,12 @@ def chat_stream():
         message = data.get('message', '')
         provider_name = data.get('provider', 'openai')
         
+        # Get user info
+        user_data = data.get('user', {})
+        user_id = user_data.get('id') if user_data else None
+        user_name = user_data.get('first_name') if user_data else None
+        username = user_data.get('username') if user_data else None
+        
         # Безопасное получение параметров с валидацией
         try:
             temperature = float(data.get('temperature', 0.7))
@@ -489,14 +685,42 @@ def chat_stream():
                 'error': str(e)
             }), 400
         
+        # Get or create chat session
+        chat = None
+        messages_history = []
+        if user_id:
+            chat = get_or_create_chat(user_id, user_name, username, provider_name)
+            # Load chat history
+            history = get_chat_history(chat.id)
+            # Convert to format expected by providers
+            messages_history = [
+                {"role": msg['role'], "content": msg['content']}
+                for msg in history
+            ]
+        
+        # Add current user message to history
+        messages_history.append({"role": "user", "content": message})
+        
+        # Save user message to database
+        if chat and user_id:
+            save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
+        
         def generate():
+            full_response = ""
             try:
                 for chunk in provider.stream(
                     message,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    messages=messages_history if messages_history else None
                 ):
+                    full_response += chunk
                     yield f"data: {json.dumps({'content': chunk})}\n\n"
+                
+                # Save assistant response to database
+                if chat and user_id and full_response:
+                    save_message(chat.id, "assistant", full_response, provider_name, temperature, max_tokens)
+                
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 # Log the full error for debugging
@@ -520,6 +744,74 @@ def chat_stream():
             'success': False,
             'error': str(e)
         }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/history', methods=['GET'])
+@app.route('/chat/history', methods=['GET'])
+def get_chat_history_endpoint():
+    """Get chat history for user"""
+    try:
+        user_id = request.args.get('user_id')
+        chat_id = request.args.get('chat_id')
+        limit = int(request.args.get('limit', 50))
+        
+        if not user_id and not chat_id:
+            return jsonify({
+                'success': False,
+                'error': 'user_id or chat_id is required'
+            }), 400
+        
+        if chat_id:
+            # Get specific chat with messages
+            chat = get_chat_with_messages(int(chat_id))
+            if not chat:
+                return jsonify({
+                    'success': False,
+                    'error': 'Chat not found'
+                }), 404
+            
+            return jsonify({
+                'success': True,
+                'data': chat
+            })
+        else:
+            # Get user's chats
+            chats = get_user_chats(user_id, limit=10)
+            return jsonify({
+                'success': True,
+                'data': {
+                    'chats': chats
+                }
+            })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/<int:chat_id>/messages', methods=['GET'])
+@app.route('/chat/<int:chat_id>/messages', methods=['GET'])
+def get_chat_messages(chat_id):
+    """Get messages for a specific chat"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        messages = get_chat_history(chat_id, limit)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'chat_id': chat_id,
+                'messages': messages
+            }
+        })
+    
     except Exception as e:
         return jsonify({
             'success': False,
