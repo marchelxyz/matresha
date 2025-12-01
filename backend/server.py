@@ -7,7 +7,7 @@ Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
 import os
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, Response, stream_with_context, g
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -261,8 +261,10 @@ class GroqProvider(AIProvider):
         )
         
         for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            if chunk.choices and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if delta and hasattr(delta, 'content') and delta.content:
+                    yield delta.content
 
 
 class MistralProvider(AIProvider):
@@ -384,7 +386,7 @@ def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'
             db.refresh(chat)
         else:
             # Update chat timestamp
-            chat.updated_at = datetime.utcnow()
+            chat.updated_at = datetime.now(timezone.utc)
             db.commit()
         
         return chat
@@ -703,7 +705,11 @@ def chat_stream():
         
         # Save user message to database
         if chat and user_id:
-            save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
+            try:
+                save_message(chat.id, "user", message, provider_name, temperature, max_tokens)
+            except Exception as db_error:
+                print(f"WARNING: Failed to save user message to database: {str(db_error)}")
+                # Продолжаем выполнение даже если сохранение не удалось
         
         def generate():
             full_response = ""
@@ -714,21 +720,27 @@ def chat_stream():
                     max_tokens=max_tokens,
                     messages=messages_history if messages_history else None
                 ):
-                    full_response += chunk
-                    yield f"data: {json.dumps({'content': chunk})}\n\n"
+                    if chunk:  # Проверяем, что chunk не пустой
+                        full_response += chunk
+                        yield f"data: {json.dumps({'content': chunk})}\n\n"
                 
                 # Save assistant response to database
                 if chat and user_id and full_response:
-                    save_message(chat.id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    try:
+                        save_message(chat.id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    except Exception as db_error:
+                        print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 # Log the full error for debugging
                 error_msg = str(e)
-                print(f"ERROR: Stream generation failed - {error_msg}")
+                error_type = type(e).__name__
+                print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
+                yield "data: [DONE]\n\n"
         
         return Response(
             stream_with_context(generate()),
@@ -740,14 +752,21 @@ def chat_stream():
         )
     
     except ValueError as e:
+        print(f"ERROR: ValueError in chat_stream - {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 400
     except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        print(f"ERROR: Exception in chat_stream - {error_type}: {error_msg}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': error_msg,
+            'type': error_type
         }), 500
 
 
