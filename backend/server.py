@@ -475,5 +475,7 @@ def chat_stream():
 
 
 if __name__ == '__main__':
+    # Development server only - use gunicorn for production
     port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
