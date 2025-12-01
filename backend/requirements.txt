@@ -1,14 +1,21 @@
-# Python dependencies for Business Assistant Backend
+# Python dependencies for AI Assistant Backend
 # Python 3.8+
 
-# HTTP Server
-# Стандартная библиотека Python включает http.server
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
 
-# Для продакшена можно использовать:
-# gunicorn==21.2.0
-# waitress==2.1.2
+# AI Providers
+openai==1.12.0
+google-generativeai==0.3.2
+anthropic==0.18.1
+groq==0.4.2
 
-# Дополнительные зависимости (если нужны)
-# flask==3.0.0
-# fastapi==0.104.1
-# uvicorn==0.24.0
+# HTTP Server for production
+gunicorn==21.2.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Utilities
+requests==2.31.0

@@ -2,51 +2,63 @@
 const tg = window.Telegram.WebApp;
 
 // DOM elements
-const navItems = document.querySelectorAll('.nav-item');
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const charCount = document.getElementById('charCount');
-const loadingOverlay = document.getElementById('loadingOverlay');
-const userName = document.getElementById('userName');
+const aiProvider = document.getElementById('aiProvider');
+const modelInfo = document.getElementById('modelInfo');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettings = document.getElementById('closeSettings');
+const settingsProvider = document.getElementById('settingsProvider');
+const temperature = document.getElementById('temperature');
+const temperatureValue = document.getElementById('temperatureValue');
+const maxTokens = document.getElementById('maxTokens');
 
 // State
-let currentSection = 'operations';
 let isProcessing = false;
+let currentProvider = 'openai';
+let currentSettings = {
+    temperature: 0.7,
+    maxTokens: 2000
+};
+let markdownParser = null;
+
+// Provider configurations
+const providers = {
+    openai: { name: 'GPT-4', model: 'gpt-4-turbo-preview' },
+    gemini: { name: 'Gemini Pro', model: 'gemini-pro' },
+    claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
+    groq: { name: 'Llama 3', model: 'llama-3-70b-8192' },
+    mistral: { name: 'Mistral Large', model: 'mistral-large-latest' }
+};
 
 // Initialize the app
 function initApp() {
+    // Initialize markdown parser
+    markdownParser = new MarkdownParser();
+    
     // Configure Telegram Web App
     tg.ready();
     tg.expand();
     
-    // Set user info
-    const user = tg.initDataUnsafe?.user;
-    if (user) {
-        userName.textContent = user.first_name || 'Пользователь';
-    }
-    
     // Set theme
     document.body.style.backgroundColor = tg.themeParams.bg_color || '#ffffff';
-    document.body.style.color = tg.themeParams.text_color || '#000000';
+    document.body.style.color = tg.themeParams.text_color || '#212121';
+    
+    // Load settings from localStorage
+    loadSettings();
     
     // Setup event listeners
     setupEventListeners();
     
-    // Show welcome message
-    showWelcomeMessage();
+    // Update UI
+    updateProviderInfo();
 }
 
 // Setup event listeners
 function setupEventListeners() {
-    // Navigation
-    navItems.forEach(item => {
-        item.addEventListener('click', () => {
-            const section = item.dataset.section;
-            switchSection(section);
-        });
-    });
-    
     // Message input
     messageInput.addEventListener('input', handleInputChange);
     messageInput.addEventListener('keydown', handleKeyDown);
@@ -56,87 +68,92 @@ function setupEventListeners() {
     
     // Auto-resize textarea
     messageInput.addEventListener('input', autoResizeTextarea);
-}
-
-// Switch between sections
-function switchSection(section) {
-    currentSection = section;
     
-    // Update navigation
-    navItems.forEach(item => {
-        item.classList.toggle('active', item.dataset.section === section);
+    // Provider selector
+    aiProvider.addEventListener('change', handleProviderChange);
+    
+    // Settings
+    settingsBtn.addEventListener('click', () => {
+        settingsModal.classList.add('show');
+        loadSettingsToModal();
     });
     
-    // Show section-specific welcome message
-    showSectionWelcome(section);
-}
-
-// Show section-specific welcome message
-function showSectionWelcome(section) {
-    const messages = {
-        operations: {
-            title: 'Операционное управление 📊',
-            description: 'Анализ экономических показателей, KPI, рекомендации по улучшению эффективности бизнеса.',
-            examples: [
-                'Проанализируй рентабельность за последний квартал',
-                'Какие показатели нужно улучшить для роста прибыли?',
-                'Создай отчет по эффективности продаж'
-            ]
-        },
-        marketing: {
-            title: 'Маркетинг и реклама 📈',
-            description: 'Настройка рекламных кампаний, креативные решения, анализ эффективности маркетинга.',
-            examples: [
-                'Помоги настроить рекламу в Яндекс.Директ',
-                'Создай креативы для Instagram',
-                'Проанализируй конверсию рекламных кампаний'
-            ]
-        },
-        accounting: {
-            title: 'Бухгалтерия и финансы 💰',
-            description: 'Финансовые отчеты, декларации, расчет налогов, ведение учета по российскому законодательству.',
-            examples: [
-                'Помоги составить отчет о прибылях и убытках',
-                'Рассчитай НДС за квартал',
-                'Создай декларацию по УСН'
-            ]
-        },
-        legal: {
-            title: 'Юридический отдел ⚖️',
-            description: 'Правовые консультации, составление документов, чек-листы по юридическим аспектам бизнеса.',
-            examples: [
-                'Помоги составить договор с поставщиком',
-                'Какие документы нужны для регистрации ООО?',
-                'Создай чек-лист по трудовому праву'
-            ]
+    closeSettings.addEventListener('click', () => {
+        settingsModal.classList.remove('show');
+    });
+    
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+            settingsModal.classList.remove('show');
         }
-    };
+    });
     
-    const sectionInfo = messages[section];
-    if (!sectionInfo) return;
+    settingsProvider.addEventListener('change', handleProviderChange);
     
-    const welcomeHtml = `
-        <div class="message bot-message">
-            <div class="message-content">
-                <h3>${sectionInfo.title}</h3>
-                <p>${sectionInfo.description}</p>
-                <p><strong>Примеры запросов:</strong></p>
-                <ul>
-                    ${sectionInfo.examples.map(example => `<li>${example}</li>`).join('')}
-                </ul>
-                <p>Напишите ваш вопрос, и я помогу!</p>
-            </div>
-        </div>
-    `;
+    temperature.addEventListener('input', (e) => {
+        temperatureValue.textContent = e.target.value;
+        currentSettings.temperature = parseFloat(e.target.value);
+        saveSettings();
+    });
     
-    // Clear previous messages and add new welcome
-    chatMessages.innerHTML = welcomeHtml;
-    scrollToBottom();
+    maxTokens.addEventListener('change', (e) => {
+        currentSettings.maxTokens = parseInt(e.target.value);
+        saveSettings();
+    });
 }
 
-// Show initial welcome message
-function showWelcomeMessage() {
-    showSectionWelcome(currentSection);
+// Handle provider change
+function handleProviderChange() {
+    const provider = aiProvider.value || settingsProvider.value;
+    currentProvider = provider;
+    updateProviderInfo();
+    saveSettings();
+}
+
+// Update provider info
+function updateProviderInfo() {
+    const provider = providers[currentProvider];
+    if (provider) {
+        modelInfo.textContent = provider.name;
+        if (settingsProvider) {
+            settingsProvider.value = currentProvider;
+        }
+    }
+}
+
+// Load settings from localStorage
+function loadSettings() {
+    const saved = localStorage.getItem('aiAssistantSettings');
+    if (saved) {
+        try {
+            const settings = JSON.parse(saved);
+            currentProvider = settings.provider || 'openai';
+            currentSettings.temperature = settings.temperature || 0.7;
+            currentSettings.maxTokens = settings.maxTokens || 2000;
+            aiProvider.value = currentProvider;
+            updateProviderInfo();
+        } catch (e) {
+            console.error('Failed to load settings:', e);
+        }
+    }
+}
+
+// Save settings to localStorage
+function saveSettings() {
+    const settings = {
+        provider: currentProvider,
+        temperature: currentSettings.temperature,
+        maxTokens: currentSettings.maxTokens
+    };
+    localStorage.setItem('aiAssistantSettings', JSON.stringify(settings));
+}
+
+// Load settings to modal
+function loadSettingsToModal() {
+    settingsProvider.value = currentProvider;
+    temperature.value = currentSettings.temperature;
+    temperatureValue.textContent = currentSettings.temperature;
+    maxTokens.value = currentSettings.maxTokens;
 }
 
 // Handle input changes
@@ -175,155 +192,205 @@ async function sendMessage() {
     autoResizeTextarea();
     handleInputChange();
     
-    // Show loading
-    showLoading(true);
+    // Set processing state
+    isProcessing = true;
+    sendButton.disabled = true;
+    
+    // Create bot message container for streaming
+    const botMessageDiv = createBotMessageContainer();
     
     try {
-        // Simulate API call
-        const response = await simulateAIResponse(text, currentSection);
-        addMessage(response, 'bot');
+        // Try to use API with streaming
+        await streamAIResponse(text, botMessageDiv);
     } catch (error) {
-        addMessage('Извините, произошла ошибка. Попробуйте еще раз.', 'bot');
+        console.error('Error:', error);
+        updateBotMessage(botMessageDiv, 'Извините, произошла ошибка. Попробуйте еще раз.');
     } finally {
-        showLoading(false);
+        isProcessing = false;
+        sendButton.disabled = messageInput.value.trim().length === 0;
     }
 }
 
-// Add message to chat
-function addMessage(text, sender) {
+// Create bot message container
+function createBotMessageContainer() {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${sender}-message`;
+    messageDiv.className = 'message bot-message';
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.className = 'message-avatar';
+    avatarDiv.innerHTML = `
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
+        </svg>
+    `;
     
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
-    // Check if text contains markdown-like formatting
-    if (text.includes('**') || text.includes('•') || text.includes('\n\n')) {
-        contentDiv.innerHTML = formatMessage(text);
-    } else {
-        contentDiv.textContent = text;
-    }
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text';
+    textDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
     
+    contentDiv.appendChild(textDiv);
+    messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
-    chatMessages.appendChild(messageDiv);
     
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+    
+    return { messageDiv, textDiv };
+}
+
+// Update bot message (for streaming)
+function updateBotMessage({ textDiv }, text) {
+    if (markdownParser) {
+        textDiv.innerHTML = markdownParser.parse(text);
+    } else {
+        textDiv.textContent = text;
+    }
     scrollToBottom();
 }
 
-// Format message with basic markdown
-function formatMessage(text) {
-    return text
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>')
-        .replace(/^/, '<p>')
-        .replace(/$/, '</p>');
+// Stream AI response
+async function streamAIResponse(userMessage, botMessageContainer) {
+    try {
+        // Try to use real API
+        const response = await api.streamMessage(
+            userMessage,
+            currentProvider,
+            {
+                temperature: currentSettings.temperature,
+                maxTokens: currentSettings.maxTokens,
+                user: tg.initDataUnsafe?.user
+            }
+        );
+        
+        let fullText = '';
+        
+        // Handle streaming response
+        if (response.body && typeof response.body.getReader === 'function') {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+                        
+                        try {
+                            const json = JSON.parse(data);
+                            if (json.content) {
+                                fullText += json.content;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        } catch (e) {
+                            // Not JSON, might be plain text
+                            if (data.trim()) {
+                                fullText += data;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        }
+                    } else if (line.trim()) {
+                        // Plain text chunk
+                        fullText += line;
+                        updateBotMessage(botMessageContainer, fullText);
+                    }
+                }
+            }
+        } else {
+            // Fallback to non-streaming
+            const result = await api.sendMessage(
+                userMessage,
+                currentProvider,
+                {
+                    temperature: currentSettings.temperature,
+                    maxTokens: currentSettings.maxTokens,
+                    user: tg.initDataUnsafe?.user
+                }
+            );
+            
+            if (result.success && result.data.response) {
+                updateBotMessage(botMessageContainer, result.data.response);
+            } else {
+                throw new Error('Invalid response');
+            }
+        }
+    } catch (error) {
+        console.error('API error:', error);
+        // Fallback to simulated response
+        await simulateStreamingResponse(userMessage, botMessageContainer);
+    }
+}
+
+// Simulate streaming response (for demo/fallback)
+async function simulateStreamingResponse(userMessage, botMessageContainer) {
+    const responses = {
+        openai: `Я - GPT-4 от OpenAI. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API OpenAI необходимо настроить ключ API на сервере.\n\n**Возможности GPT-4:**\n• Понимание контекста\n• Креативные решения\n• Анализ данных\n• Многоязычная поддержка`,
+        gemini: `Я - Gemini Pro от Google. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Gemini необходимо настроить ключ API на сервере.\n\n**Возможности Gemini:**\n• Мультимодальность\n• Быстрые ответы\n• Понимание изображений\n• Интеграция с Google сервисами`,
+        claude: `Я - Claude 3 от Anthropic. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Claude необходимо настроить ключ API на сервере.\n\n**Возможности Claude:**\n• Работа с длинными текстами\n• Безопасность и этика\n• Точный анализ\n• Контекстное понимание`,
+        groq: `Я - Llama 3 от Groq. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Groq необходимо настроить ключ API на сервере.\n\n**Возможности Llama 3:**\n• Очень быстрые ответы\n• Эффективность\n• Открытая модель\n• Низкая задержка`,
+        mistral: `Я - Mistral Large. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Mistral необходимо настроить ключ API на сервере.\n\n**Возможности Mistral:**\n• Многоязычность\n• Эффективность\n• Качественные ответы\n• Европейская разработка`
+    };
+    
+    const responseText = responses[currentProvider] || responses.openai;
+    const words = responseText.split(' ');
+    let currentText = '';
+    
+    for (let i = 0; i < words.length; i++) {
+        currentText += (i > 0 ? ' ' : '') + words[i];
+        updateBotMessage(botMessageContainer, currentText);
+        await new Promise(resolve => setTimeout(resolve, 30));
+    }
+}
+
+// Add message to chat (for user messages)
+function addMessage(text, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    if (sender === 'user') {
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        const user = tg.initDataUnsafe?.user;
+        avatarDiv.textContent = user?.first_name?.[0] || 'U';
+        messageDiv.appendChild(avatarDiv);
+    } else {
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        avatarDiv.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
+            </svg>
+        `;
+        messageDiv.appendChild(avatarDiv);
+    }
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text';
+    textDiv.textContent = text;
+    
+    contentDiv.appendChild(textDiv);
+    messageDiv.appendChild(contentDiv);
+    
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
 }
 
 // Scroll to bottom
 function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Show/hide loading
-function showLoading(show) {
-    isProcessing = show;
-    loadingOverlay.classList.toggle('show', show);
-    sendButton.disabled = show || messageInput.value.trim().length === 0;
-}
-
-// Simulate AI response based on section
-async function simulateAIResponse(userMessage, section) {
-    try {
-        // Try to use API first
-        const response = await api.sendMessage(userMessage, section, {
-            user: tg.initDataUnsafe?.user,
-            timestamp: new Date().toISOString()
-        });
-        
-        if (response.success) {
-            return response.data.response;
-        }
-    } catch (error) {
-        console.log('API not available, using mock response');
-    }
-    
-    // Fallback to mock responses
-    const responses = {
-        operations: [
-            "Анализирую ваши операционные показатели...",
-            "На основе предоставленных данных рекомендую:",
-            "Ваши KPI показывают следующие тенденции:",
-            "Для улучшения операционной эффективности предлагаю:"
-        ],
-        marketing: [
-            "Создаю креативную стратегию для вашей рекламной кампании...",
-            "Анализирую целевую аудиторию и конкурентов...",
-            "Рекомендую следующие настройки для рекламного кабинета:",
-            "Вот несколько креативных идей для вашего продукта:"
-        ],
-        accounting: [
-            "Обрабатываю финансовые данные для составления отчета...",
-            "Рассчитываю налоговые обязательства согласно НК РФ...",
-            "Формирую отчетность в соответствии с российскими стандартами:",
-            "Вот структура вашего финансового отчета:"
-        ],
-        legal: [
-            "Составляю юридический документ на основе ваших данных...",
-            "Анализирую правовые аспекты вашего запроса...",
-            "Вот шаблон документа с учетом российского законодательства:",
-            "Создаю чек-лист по юридическим требованиям:"
-        ]
-    };
-    
-    const sectionResponses = responses[section] || responses.operations;
-    const randomResponse = sectionResponses[Math.floor(Math.random() * sectionResponses.length)];
-    
-    // Generate contextual response
-    let response = randomResponse + "\n\n";
-    
-    if (section === 'operations') {
-        response += "📊 **Анализ показателей:**\n";
-        response += "• Рентабельность: 15.2% (цель: 18%)\n";
-        response += "• Оборачиваемость: 45 дней (цель: 30 дней)\n";
-        response += "• Маржинальность: 22% (хорошо)\n\n";
-        response += "💡 **Рекомендации:**\n";
-        response += "1. Оптимизировать управление запасами\n";
-        response += "2. Улучшить процессы продаж\n";
-        response += "3. Внедрить автоматизацию учета";
-    } else if (section === 'marketing') {
-        response += "📈 **Маркетинговая стратегия:**\n";
-        response += "• Целевая аудитория: 25-45 лет, средний доход\n";
-        response += "• Каналы: Яндекс.Директ, Google Ads, соцсети\n";
-        response += "• Бюджет: 50,000₽/месяц\n\n";
-        response += "🎨 **Креативы:**\n";
-        response += "1. Видео-ролик 15 сек для Instagram\n";
-        response += "2. Баннеры для контекстной рекламы\n";
-        response += "3. Email-рассылка с персонализацией";
-    } else if (section === 'accounting') {
-        response += "💰 **Финансовый отчет:**\n";
-        response += "• Выручка: 2,500,000₽\n";
-        response += "• Расходы: 1,800,000₽\n";
-        response += "• Прибыль: 700,000₽\n\n";
-        response += "📋 **Налоги (УСН 6%):**\n";
-        response += "• Налоговая база: 2,500,000₽\n";
-        response += "• Сумма налога: 150,000₽\n";
-        response += "• К доплате: 150,000₽";
-    } else if (section === 'legal') {
-        response += "⚖️ **Юридический документ:**\n";
-        response += "ДОГОВОР ПОСТАВКИ\n\n";
-        response += "**Стороны:**\n";
-        response += "• Поставщик: [Ваши реквизиты]\n";
-        response += "• Покупатель: [Реквизиты контрагента]\n\n";
-        response += "**Предмет договора:**\n";
-        response += "Поставка товаров согласно спецификации\n\n";
-        response += "**Условия:**\n";
-        response += "• Срок поставки: 10 рабочих дней\n";
-        response += "• Оплата: 50% предоплата, 50% по факту\n";
-        response += "• Ответственность: согласно ГК РФ";
-    }
-    
-    return response;
+    requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
 }
 
 // Initialize app when DOM is loaded

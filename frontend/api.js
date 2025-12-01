@@ -1,8 +1,9 @@
-// API Service for Business Assistant
-class BusinessAPI {
+// API Service for AI Assistant
+class AIAPI {
     constructor() {
-        this.baseURL = 'https://your-api-domain.com/api';
-        this.timeout = 30000; // 30 seconds
+        // Use environment variable or default to relative path
+        this.baseURL = window.API_BASE_URL || '/api';
+        this.timeout = 60000; // 60 seconds for AI responses
     }
 
     // Generic request method
@@ -18,6 +19,10 @@ class BusinessAPI {
             ...options
         };
 
+        if (options.body && typeof options.body === 'object') {
+            config.body = JSON.stringify(options.body);
+        }
+
         try {
             const response = await fetch(url, config);
             
@@ -32,119 +37,61 @@ class BusinessAPI {
         }
     }
 
-    // Operations Management API
-    async analyzeKPIs(data) {
-        return this.request('/operations/kpi-analysis', {
+    // Stream message (for streaming responses)
+    async streamMessage(message, provider, options = {}) {
+        const url = `${this.baseURL}/chat/stream`;
+        const config = {
             method: 'POST',
-            body: JSON.stringify(data)
-        });
-    }
-
-    async generateFinancialReport(period, companyData) {
-        return this.request('/operations/financial-report', {
-            method: 'POST',
-            body: JSON.stringify({ period, companyData })
-        });
-    }
-
-    async getOptimizationRecommendations(metrics) {
-        return this.request('/operations/optimization', {
-            method: 'POST',
-            body: JSON.stringify({ metrics })
-        });
-    }
-
-    // Marketing API
-    async createAdCampaign(campaignData) {
-        return this.request('/marketing/campaign', {
-            method: 'POST',
-            body: JSON.stringify(campaignData)
-        });
-    }
-
-    async generateCreatives(brief) {
-        return this.request('/marketing/creatives', {
-            method: 'POST',
-            body: JSON.stringify({ brief })
-        });
-    }
-
-    async analyzeAudience(targetData) {
-        return this.request('/marketing/audience', {
-            method: 'POST',
-            body: JSON.stringify(targetData)
-        });
-    }
-
-    // Accounting API
-    async calculateTaxes(financialData, taxSystem) {
-        return this.request('/accounting/tax-calculation', {
-            method: 'POST',
-            body: JSON.stringify({ financialData, taxSystem })
-        });
-    }
-
-    async generateTaxReport(period, companyInfo) {
-        return this.request('/accounting/tax-report', {
-            method: 'POST',
-            body: JSON.stringify({ period, companyInfo })
-        });
-    }
-
-    async createFinancialStatement(data) {
-        return this.request('/accounting/financial-statement', {
-            method: 'POST',
-            body: JSON.stringify(data)
-        });
-    }
-
-    // Legal API
-    async generateDocument(templateType, data) {
-        return this.request('/legal/document', {
-            method: 'POST',
-            body: JSON.stringify({ templateType, data })
-        });
-    }
-
-    async getLegalChecklist(businessType, activities) {
-        return this.request('/legal/checklist', {
-            method: 'POST',
-            body: JSON.stringify({ businessType, activities })
-        });
-    }
-
-    async getLegalConsultation(question, context) {
-        return this.request('/legal/consultation', {
-            method: 'POST',
-            body: JSON.stringify({ question, context })
-        });
-    }
-
-    // AI Chat API
-    async sendMessage(message, section, context = {}) {
-        return this.request('/ai/chat', {
-            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+            },
             body: JSON.stringify({
                 message,
-                section,
-                context,
-                timestamp: new Date().toISOString()
+                provider,
+                ...options
             })
+        };
+
+        try {
+            const response = await fetch(url, config);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return response;
+        } catch (error) {
+            console.error('Stream request failed:', error);
+            throw error;
+        }
+    }
+
+    // Send message (non-streaming)
+    async sendMessage(message, provider, options = {}) {
+        return this.request('/chat', {
+            method: 'POST',
+            body: {
+                message,
+                provider,
+                ...options
+            }
         });
     }
 
-    // Utility methods
-    async healthCheck() {
-        return this.request('/health');
+    // Get available providers
+    async getProviders() {
+        return this.request('/providers');
     }
 
-    async getVersion() {
-        return this.request('/version');
+    // Health check
+    async healthCheck() {
+        return this.request('/health');
     }
 }
 
 // Mock API for development
-class MockBusinessAPI extends BusinessAPI {
+class MockAIAPI extends AIAPI {
     constructor() {
         super();
         this.baseURL = 'mock://api';
@@ -158,70 +105,64 @@ class MockBusinessAPI extends BusinessAPI {
         return this.getMockResponse(endpoint, options);
     }
 
+    async streamMessage(message, provider, options = {}) {
+        // Simulate streaming with delay
+        return this.simulateStream(message, provider);
+    }
+
+    async simulateStream(message, provider) {
+        const responses = {
+            openai: `Я - GPT-4 от OpenAI. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
+            gemini: `Я - Gemini Pro от Google. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
+            claude: `Я - Claude 3 от Anthropic. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
+            groq: `Я - Llama 3 от Groq. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
+            mistral: `Я - Mistral Large. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`
+        };
+
+        const responseText = responses[provider] || responses.openai;
+        
+        // Create a mock ReadableStream
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            async start(controller) {
+                const words = responseText.split(' ');
+                for (let i = 0; i < words.length; i++) {
+                    const chunk = `data: ${JSON.stringify({ content: words[i] + (i < words.length - 1 ? ' ' : '') })}\n\n`;
+                    controller.enqueue(encoder.encode(chunk));
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
+            }
+        });
+
+        return {
+            ok: true,
+            status: 200,
+            body: stream,
+            bodyUsed: false
+        };
+    }
+
     getMockResponse(endpoint, options) {
         const mockResponses = {
-            '/operations/kpi-analysis': {
-                success: true,
-                data: {
-                    kpis: {
-                        revenue: { current: 2500000, target: 3000000, trend: 'up' },
-                        profit: { current: 500000, target: 600000, trend: 'up' },
-                        margin: { current: 20, target: 25, trend: 'stable' }
-                    },
-                    recommendations: [
-                        'Увеличить маржинальность на 5%',
-                        'Оптимизировать операционные расходы',
-                        'Улучшить конверсию продаж'
-                    ]
-                }
-            },
-            '/marketing/creatives': {
-                success: true,
-                data: {
-                    creatives: [
-                        {
-                            type: 'banner',
-                            title: 'Увеличьте прибыль на 30%',
-                            description: 'Наше решение поможет оптимизировать бизнес-процессы',
-                            cta: 'Узнать больше'
-                        },
-                        {
-                            type: 'video',
-                            title: 'Как мы помогли 1000+ компаний',
-                            description: 'Реальные кейсы наших клиентов',
-                            cta: 'Смотреть видео'
-                        }
-                    ]
-                }
-            },
-            '/accounting/tax-calculation': {
-                success: true,
-                data: {
-                    taxSystem: 'USN_6',
-                    revenue: 2500000,
-                    taxAmount: 150000,
-                    deductions: 0,
-                    netTax: 150000
-                }
-            },
-            '/legal/document': {
-                success: true,
-                data: {
-                    documentType: 'supply_contract',
-                    content: 'ДОГОВОР ПОСТАВКИ\n\n[Сгенерированный контент документа]',
-                    variables: ['supplier_name', 'buyer_name', 'product_description']
-                }
-            },
-            '/ai/chat': {
+            '/chat': {
                 success: true,
                 data: {
                     response: 'Это демонстрационный ответ AI-ассистента. В реальном приложении здесь будет интеллектуальный ответ на основе вашего запроса.',
-                    suggestions: [
-                        'Расскажи подробнее',
-                        'Покажи примеры',
-                        'Создай отчет'
-                    ]
+                    provider: options.body?.provider || 'openai'
                 }
+            },
+            '/providers': {
+                success: true,
+                data: {
+                    providers: ['openai', 'gemini', 'claude', 'groq', 'mistral']
+                }
+            },
+            '/health': {
+                status: 'ok',
+                timestamp: new Date().toISOString(),
+                version: '1.0.0'
             }
         };
 
@@ -233,13 +174,21 @@ class MockBusinessAPI extends BusinessAPI {
 }
 
 // Initialize API instance
-const api = new MockBusinessAPI();
+// Try to detect if we're in a real environment
+let api;
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Development mode - use mock API
+    api = new MockAIAPI();
+} else {
+    // Production mode - use real API
+    api = new AIAPI();
+}
 
 // Export for use in other files
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { BusinessAPI, MockBusinessAPI, api };
+    module.exports = { AIAPI, MockAIAPI, api };
 } else {
-    window.BusinessAPI = BusinessAPI;
-    window.MockBusinessAPI = MockBusinessAPI;
+    window.AIAPI = AIAPI;
+    window.MockAIAPI = MockAIAPI;
     window.api = api;
 }
