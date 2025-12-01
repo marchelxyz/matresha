@@ -1,0 +1,9 @@
+# Railway ignore file
+# Указываем Railway игнорировать frontend директорию
+# так как backend находится в отдельной директории
+
+frontend/
+.git/
+node_modules/
+*.md
+examples.md

@@ -87,13 +87,21 @@ class BusinessAssistantHandler(http.server.SimpleHTTPRequestHandler):
         })
 
 def main():
-    PORT = 8000
+    # Получаем порт из переменной окружения (для Railway) или используем значение по умолчанию
+    PORT = int(os.environ.get('PORT', 8000))
+    
+    # Если порт передан как аргумент командной строки, используем его
+    if len(sys.argv) > 1:
+        try:
+            PORT = int(sys.argv[1])
+        except ValueError:
+            print("❌ Invalid port number. Using default port.")
     
     # Check if port is available
     try:
         with socketserver.TCPServer(("", PORT), BusinessAssistantHandler) as httpd:
-            print(f"🚀 Business Assistant server running at http://localhost:{PORT}")
-            print("📱 Open this URL in your browser to test the app")
+            print(f"🚀 Business Assistant server running on port {PORT}")
+            print(f"📱 Server accessible at http://0.0.0.0:{PORT}")
             print("🛑 Press Ctrl+C to stop the server")
             httpd.serve_forever()
     except OSError as e:
@@ -105,13 +113,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        try:
-            PORT = int(sys.argv[1])
-        except ValueError:
-            print("❌ Invalid port number. Using default port 8000.")
-            PORT = 8000
-    else:
-        PORT = 8000
-    
     main()

@@ -1,0 +1,14 @@
+# Python dependencies for Business Assistant Backend
+# Python 3.8+
+
+# HTTP Server
+# Стандартная библиотека Python включает http.server
+
+# Для продакшена можно использовать:
+# gunicorn==21.2.0
+# waitress==2.1.2
+
+# Дополнительные зависимости (если нужны)
+# flask==3.0.0
+# fastapi==0.104.1
+# uvicorn==0.24.0
