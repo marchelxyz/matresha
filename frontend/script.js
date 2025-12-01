@@ -32,7 +32,7 @@ let selectedFiles = []; // Массив выбранных файлов
 
 // Provider configurations
 const providers = {
-    openai: { name: 'GPT-4', model: 'gpt-4-turbo-preview' },
+    openai: { name: 'GPT-4', model: 'gpt-4o' },
     gemini: { name: 'Gemini 1.5', model: 'gemini-1.5-flash' },
     claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
     groq: { name: 'Llama 3.3', model: 'llama-3.3-70b-versatile' },

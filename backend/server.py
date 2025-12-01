@@ -64,7 +64,7 @@ class OpenAIProvider(AIProvider):
             message_list = [{"role": "user", "content": message}]
         
         response = self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model="gpt-4o",
             messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens
@@ -83,7 +83,7 @@ class OpenAIProvider(AIProvider):
             message_list = [{"role": "user", "content": message}]
         
         stream = self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model="gpt-4o",
             messages=message_list,
             temperature=temperature,
             max_tokens=max_tokens,
