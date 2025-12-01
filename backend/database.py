@@ -69,14 +69,22 @@ class Message(Base):
 
 # Database setup
 def get_database_url():
-    """Get database URL from environment or use SQLite default"""
+    """Get database URL from environment or use SQLite default for local development"""
     db_url = os.getenv('DATABASE_URL')
     if db_url:
         # PostgreSQL URL format: postgresql://user:pass@host:port/dbname
+        # PostgreSQL URL format (Railway): postgres://user:pass@host:port/dbname
         # SQLite URL format: sqlite:///path/to/db.sqlite
         return db_url
     else:
-        # Default to SQLite in the backend directory
+        # Default to SQLite only for local development
+        # In production, DATABASE_URL should be set (e.g., on Railway)
+        import warnings
+        warnings.warn(
+            "DATABASE_URL not set. Using SQLite for local development. "
+            "For production, set DATABASE_URL environment variable to use PostgreSQL.",
+            UserWarning
+        )
         db_path = os.path.join(os.path.dirname(__file__), 'chat_history.db')
         return f'sqlite:///{db_path}'
 
