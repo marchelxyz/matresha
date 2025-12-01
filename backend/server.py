@@ -109,9 +109,11 @@ class GeminiProvider(AIProvider):
             if self.api_key:
                 genai.configure(api_key=self.api_key)
                 # Try models in order - newer models first (gemini-pro is deprecated)
-                # gemini-1.5-flash is fastest and most available
+                # gemini-2.5-flash is the newest and fastest
+                # gemini-1.5-flash is fast and widely available
                 # gemini-1.5-pro is more capable
                 model_attempts = [
+                    ('gemini-2.5-flash', 'gemini-2.5-flash'),
                     ('gemini-1.5-flash', 'gemini-1.5-flash'),
                     ('gemini-1.5-pro', 'gemini-1.5-pro'),
                     ('gemini-pro', 'gemini-pro'),  # Legacy, may not work with v1beta
@@ -170,6 +172,7 @@ class GeminiProvider(AIProvider):
         
         # Try to initialize model with fallback - newer models first
         model_attempts = [
+            ('gemini-2.5-flash', 'gemini-2.5-flash'),
             ('gemini-1.5-flash', 'gemini-1.5-flash'),
             ('gemini-1.5-pro', 'gemini-1.5-pro'),
             ('gemini-pro', 'gemini-pro'),  # Legacy, may not work with v1beta
