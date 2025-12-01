@@ -34,6 +34,55 @@ const providers = {
     mistral: { name: 'Mistral Large', model: 'mistral-large-latest' }
 };
 
+// Convert hex color to RGB
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
+// Calculate brightness of a color (0-255)
+function getBrightness(color) {
+    const rgb = hexToRgb(color);
+    if (!rgb) return 128; // Default to medium brightness
+    // Using relative luminance formula
+    return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+}
+
+// Check if theme is dark
+function isDarkTheme() {
+    // Check Telegram theme
+    const themeParams = tg.themeParams;
+    if (themeParams.bg_color) {
+        const brightness = getBrightness(themeParams.bg_color);
+        return brightness < 128; // Dark if brightness < 50%
+    }
+    
+    // Fallback to system preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return true;
+    }
+    
+    return false;
+}
+
+// Apply adaptive logo color based on theme
+function applyAdaptiveLogo() {
+    const logo = document.querySelector('.app-logo');
+    if (!logo) return;
+    
+    if (isDarkTheme()) {
+        // Dark theme: invert logo to make it light
+        logo.style.filter = 'brightness(0) invert(1)';
+    } else {
+        // Light theme: keep logo dark
+        logo.style.filter = 'brightness(0)';
+    }
+}
+
 // Apply Telegram theme colors
 function applyTelegramTheme() {
     const themeParams = tg.themeParams;
@@ -62,8 +111,14 @@ function applyTelegramTheme() {
         root.style.setProperty('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color);
     }
     
+    // Apply adaptive logo
+    applyAdaptiveLogo();
+    
     // Listen for theme changes
-    tg.onEvent('themeChanged', applyTelegramTheme);
+    tg.onEvent('themeChanged', () => {
+        applyTelegramTheme();
+        applyAdaptiveLogo();
+    });
 }
 
 // Initialize the app
@@ -81,6 +136,11 @@ async function initApp() {
     
     // Apply Telegram theme colors to CSS variables for adaptive header
     applyTelegramTheme();
+    
+    // Apply adaptive logo after a short delay to ensure DOM is ready
+    setTimeout(() => {
+        applyAdaptiveLogo();
+    }, 100);
     
     // Load settings from localStorage
     loadSettings();
@@ -654,4 +714,18 @@ window.copyTableToClipboard = function(button) {
 }
 
 // Initialize app when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+    // Also apply adaptive logo on load
+    setTimeout(() => {
+        applyAdaptiveLogo();
+    }, 200);
+});
+
+// Listen for system theme changes
+if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        applyAdaptiveLogo();
+    });
+}
