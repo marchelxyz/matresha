@@ -31,7 +31,6 @@ body {
 /* Header */
 .header {
     background: var(--tg-theme-secondary-bg-color, #ffffff);
-    border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
     padding: 0;
     min-height: 112px;
     position: sticky;
@@ -72,8 +71,8 @@ body {
 .app-logo {
     width: 48px;
     height: 56px;
-    color: var(--tg-theme-text-color, #212121);
     display: block;
+    object-fit: contain;
 }
 
 .app-title {
