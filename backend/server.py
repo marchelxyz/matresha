@@ -96,65 +96,198 @@ class OpenAIProvider(AIProvider):
 
 
 class GeminiProvider(AIProvider):
-    """Google Gemini Provider"""
+    """Google Gemini Provider with ChatSession support"""
     
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('GEMINI_API_KEY'))
+        self.model_name = None
         try:
             import google.generativeai as genai
             if self.api_key:
                 genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-pro')
+                # Use newer model: gemini-1.5-pro or gemini-1.5-flash
+                # Try gemini-1.5-flash first (faster), fallback to gemini-1.5-pro
+                try:
+                    self.model = genai.GenerativeModel('gemini-1.5-flash')
+                    self.model_name = 'gemini-1.5-flash'
+                    print("Gemini: Using gemini-1.5-flash model")
+                except Exception as e1:
+                    try:
+                        self.model = genai.GenerativeModel('gemini-1.5-pro')
+                        self.model_name = 'gemini-1.5-pro'
+                        print("Gemini: Using gemini-1.5-pro model (fallback)")
+                    except Exception as e2:
+                        # Fallback to older model
+                        try:
+                            self.model = genai.GenerativeModel('gemini-pro')
+                            self.model_name = 'gemini-pro'
+                            print("Gemini: Using gemini-pro model (legacy fallback)")
+                        except Exception as e3:
+                            print(f"Gemini: Failed to initialize any model. Errors: {e1}, {e2}, {e3}")
+                            self.model = None
+                            self.model_name = None
+                self.genai = genai
             else:
                 self.model = None
+                self.genai = None
         except ImportError:
+            print("Gemini: google-generativeai library not installed")
             self.model = None
+            self.genai = None
+    
+    def _convert_messages_to_gemini_format(self, messages):
+        """Convert messages from OpenAI format to Gemini format"""
+        if not messages:
+            return []
+        
+        gemini_messages = []
+        for msg in messages:
+            role = msg.get('role', 'user')
+            content = msg.get('content', '')
+            
+            # Gemini uses 'user' and 'model' roles (not 'assistant')
+            if role == 'assistant':
+                gemini_role = 'model'
+            elif role == 'user':
+                gemini_role = 'user'
+            else:
+                # Skip system messages or convert to user
+                gemini_role = 'user'
+            
+            gemini_messages.append({
+                'role': gemini_role,
+                'parts': [content]
+            })
+        
+        return gemini_messages
     
     def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.model:
             raise ValueError("Gemini API key not configured")
         
-        # Gemini uses conversation history differently - combine messages
-        if messages:
-            # Combine all messages into a single text with context
-            combined = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-            input_text = combined
-        else:
-            input_text = message
-        
-        response = self.model.generate_content(
-            input_text,
-            generation_config={
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-            }
-        )
-        
-        return response.text
+        try:
+            # If we have message history, use ChatSession for proper context
+            if messages and len(messages) > 1:
+                # Convert messages to Gemini format
+                gemini_messages = self._convert_messages_to_gemini_format(messages)
+                
+                # History is all messages except the last one (which is the current user message)
+                history = gemini_messages[:-1] if len(gemini_messages) > 1 else []
+                
+                # Current user message is the last one
+                current_message = gemini_messages[-1] if gemini_messages else None
+                user_content = current_message.get('parts', [message])[0] if current_message else message
+                
+                # Ensure user_content is a string
+                if not isinstance(user_content, str):
+                    user_content = str(user_content)
+                
+                # Create a chat session with history
+                chat = self.model.start_chat(history=history)
+                
+                # Generate response with chat context
+                response = chat.send_message(
+                    user_content,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens,
+                    }
+                )
+            else:
+                # Single message, no history
+                response = self.model.generate_content(
+                    message,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens,
+                    }
+                )
+            
+            # Handle response
+            if hasattr(response, 'text'):
+                return response.text
+            elif hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    return ''.join([part.text for part in candidate.content.parts if hasattr(part, 'text')])
+                return str(candidate)
+            else:
+                return str(response)
+                
+        except Exception as e:
+            error_msg = str(e)
+            # Provide more helpful error messages
+            if "API_KEY" in error_msg or "api key" in error_msg.lower():
+                raise ValueError("Gemini API key not configured or invalid")
+            elif "quota" in error_msg.lower() or "limit" in error_msg.lower():
+                raise ValueError("Gemini API quota exceeded. Please check your usage limits.")
+            else:
+                raise ValueError(f"Gemini API error: {error_msg}")
     
     def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.model:
             raise ValueError("Gemini API key not configured")
         
-        # Gemini uses conversation history differently - combine messages
-        if messages:
-            combined = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-            input_text = combined
-        else:
-            input_text = message
-        
-        response = self.model.generate_content(
-            input_text,
-            generation_config={
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-            },
-            stream=True
-        )
-        
-        for chunk in response:
-            if chunk.text:
-                yield chunk.text
+        try:
+            # If we have message history, use ChatSession for proper context
+            if messages and len(messages) > 1:
+                # Convert messages to Gemini format
+                gemini_messages = self._convert_messages_to_gemini_format(messages)
+                
+                # History is all messages except the last one (which is the current user message)
+                history = gemini_messages[:-1] if len(gemini_messages) > 1 else []
+                
+                # Current user message is the last one
+                current_message = gemini_messages[-1] if gemini_messages else None
+                user_content = current_message.get('parts', [message])[0] if current_message else message
+                
+                # Ensure user_content is a string
+                if not isinstance(user_content, str):
+                    user_content = str(user_content)
+                
+                # Create a chat session with history
+                chat = self.model.start_chat(history=history)
+                
+                # Stream response with chat context
+                response = chat.send_message(
+                    user_content,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens,
+                    },
+                    stream=True
+                )
+            else:
+                # Single message, no history
+                response = self.model.generate_content(
+                    message,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens,
+                    },
+                    stream=True
+                )
+            
+            # Stream chunks
+            for chunk in response:
+                if hasattr(chunk, 'text') and chunk.text:
+                    yield chunk.text
+                elif hasattr(chunk, 'candidates') and chunk.candidates:
+                    candidate = chunk.candidates[0]
+                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                yield part.text
+                
+        except Exception as e:
+            error_msg = str(e)
+            # Provide more helpful error messages
+            if "API_KEY" in error_msg or "api key" in error_msg.lower():
+                raise ValueError("Gemini API key not configured or invalid")
+            elif "quota" in error_msg.lower() or "limit" in error_msg.lower():
+                raise ValueError("Gemini API quota exceeded. Please check your usage limits.")
+            else:
+                raise ValueError(f"Gemini API error: {error_msg}")
 
 
 class ClaudeProvider(AIProvider):
