@@ -70,9 +70,20 @@ body {
 
 .app-logo {
     width: 48px;
-    height: 56px;
+    height: 56px; /* ИЗМЕНИТЕ ЭТО ЗНАЧЕНИЕ для настройки высоты логотипа */
     display: block;
     object-fit: contain;
+    /* Адаптивный цвет логотипа: темный в светлой теме, светлый в темной */
+    /* По умолчанию темный логотип (для светлой темы) */
+    filter: brightness(0);
+    transition: filter 0.3s ease;
+}
+
+/* В темной теме инвертируем цвет логотипа (темный -> светлый) */
+@media (prefers-color-scheme: dark) {
+    .app-logo {
+        filter: brightness(0) invert(1);
+    }
 }
 
 .app-title {
@@ -661,7 +672,7 @@ body {
     
     .app-logo {
         width: 40px;
-        height: 47px;
+        height: 47px; /* Высота логотипа для планшетов (экраны до 768px) */
     }
     
     .app-title {
@@ -718,7 +729,7 @@ body {
     
     .app-logo {
         width: 36px;
-        height: 42px;
+        height: 42px; /* Высота логотипа для мобильных (экраны до 480px) */
     }
     
     .app-title {
