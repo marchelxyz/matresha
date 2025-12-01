@@ -1,0 +1,24 @@
+{
+  "name": "business-assistant-frontend",
+  "version": "1.0.0",
+  "description": "Frontend для Business Assistant Telegram Mini App",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'No build step required for static files'",
+    "start": "npx serve ."
+  },
+  "keywords": [
+    "telegram",
+    "mini-app",
+    "frontend"
+  ],
+  "author": "Business Assistant Team",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

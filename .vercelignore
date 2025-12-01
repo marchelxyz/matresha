@@ -1,0 +1,10 @@
+# Vercel ignore file
+# Указываем Vercel игнорировать backend директорию
+# так как frontend находится в отдельной директории
+
+backend/
+.git/
+node_modules/
+*.md
+examples.md
+.railwayignore
