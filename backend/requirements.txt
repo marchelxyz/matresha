@@ -9,7 +9,7 @@ flask-cors==4.0.0
 openai==1.12.0
 google-generativeai==0.3.2
 anthropic==0.18.1
-groq==0.4.2
+groq>=0.36.0
 
 # HTTP Server for production
 gunicorn==21.2.0

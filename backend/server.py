@@ -164,8 +164,19 @@ class GroqProvider(AIProvider):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
         try:
             from groq import Groq
-            self.client = Groq(api_key=self.api_key) if self.api_key else None
+            # Groq client initialization - updated to work with groq >= 0.36.0
+            if self.api_key:
+                self.client = Groq(api_key=self.api_key)
+            else:
+                self.client = None
         except ImportError:
+            self.client = None
+        except Exception as e:
+            # Log the error for debugging
+            error_msg = str(e)
+            print(f"ERROR: Failed to initialize Groq client: {error_msg}")
+            import traceback
+            traceback.print_exc()
             self.client = None
     
     def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
@@ -488,7 +499,12 @@ def chat_stream():
                     yield f"data: {json.dumps({'content': chunk})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                # Log the full error for debugging
+                error_msg = str(e)
+                print(f"ERROR: Stream generation failed - {error_msg}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'error': error_msg})}\n\n"
         
         return Response(
             stream_with_context(generate()),
