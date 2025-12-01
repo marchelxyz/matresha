@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AI Assistant Backend Server
-Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
+Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral, DeepSeek
 """
 
 import os
@@ -621,13 +621,103 @@ class MistralProvider(AIProvider):
                 yield chunk.choices[0].delta.content
 
 
+class DeepSeekProvider(AIProvider):
+    """DeepSeek AI Provider (using OpenAI-compatible API)"""
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('DEEPSEEK_API_KEY'))
+        try:
+            import openai
+            if self.api_key:
+                self.client = openai.OpenAI(
+                    api_key=self.api_key,
+                    base_url="https://api.deepseek.com/v1"
+                )
+            else:
+                self.client = None
+        except ImportError:
+            self.client = None
+    
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
+        if not self.client:
+            raise ValueError("DeepSeek API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Handle API errors
+            if error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+                raise ValueError("DeepSeek API: Неверный API ключ или ключ не настроен")
+            elif 'rate limit' in error_msg.lower():
+                raise ValueError("DeepSeek API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            elif 'quota' in error_msg.lower():
+                raise ValueError("DeepSeek API: Превышена квота использования. Пожалуйста, проверьте ваш план.")
+            else:
+                raise ValueError(f"DeepSeek API ошибка: {error_msg}")
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
+        if not self.client:
+            raise ValueError("DeepSeek API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
+        try:
+            stream = self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta and hasattr(delta, 'content') and delta.content:
+                        yield delta.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Handle API errors
+            if error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+                raise ValueError("DeepSeek API: Неверный API ключ или ключ не настроен")
+            elif 'rate limit' in error_msg.lower():
+                raise ValueError("DeepSeek API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            elif 'quota' in error_msg.lower():
+                raise ValueError("DeepSeek API: Превышена квота использования. Пожалуйста, проверьте ваш план.")
+            else:
+                raise ValueError(f"DeepSeek API ошибка: {error_msg}")
+
+
 # Provider registry
 PROVIDERS = {
     'openai': OpenAIProvider,
     'gemini': GeminiProvider,
     'claude': ClaudeProvider,
     'groq': GroqProvider,
-    'mistral': MistralProvider
+    'mistral': MistralProvider,
+    'deepseek': DeepSeekProvider
 }
 
 
@@ -646,7 +736,8 @@ def get_provider(provider_name):
             'gemini': 'GEMINI_API_KEY',
             'claude': 'ANTHROPIC_API_KEY',
             'groq': 'GROQ_API_KEY',
-            'mistral': 'MISTRAL_API_KEY'
+            'mistral': 'MISTRAL_API_KEY',
+            'deepseek': 'DEEPSEEK_API_KEY'
         }.get(provider_name, f'{provider_name.upper()}_API_KEY')
         
         raise ValueError(
@@ -802,7 +893,8 @@ def get_providers():
         'gemini': 'GEMINI_API_KEY',
         'claude': 'ANTHROPIC_API_KEY',
         'groq': 'GROQ_API_KEY',
-        'mistral': 'MISTRAL_API_KEY'
+        'mistral': 'MISTRAL_API_KEY',
+        'deepseek': 'DEEPSEEK_API_KEY'
     }
     
     for name, env_var in env_var_map.items():
