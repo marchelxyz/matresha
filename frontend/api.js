@@ -40,24 +40,54 @@ class AIAPI {
     // Stream message (for streaming responses)
     async streamMessage(message, provider, options = {}) {
         const url = `${this.baseURL}/chat/stream`;
+        
+        // Подготовка данных для отправки - фильтруем undefined значения
+        const requestData = {
+            message,
+            provider,
+            ...Object.fromEntries(
+                Object.entries(options).filter(([_, v]) => v !== undefined)
+            )
+        };
+        
         const config = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream',
             },
-            body: JSON.stringify({
-                message,
-                provider,
-                ...options
-            })
+            body: JSON.stringify(requestData)
         };
 
         try {
             const response = await fetch(url, config);
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // Попытаться получить детали ошибки от сервера
+                let errorMessage = `HTTP error! status: ${response.status}`;
+                try {
+                    // Клонируем ответ, чтобы можно было прочитать его несколько раз
+                    const responseClone = response.clone();
+                    const contentType = response.headers.get('content-type');
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await responseClone.json();
+                        if (errorData.error) {
+                            errorMessage = errorData.error;
+                        } else if (errorData.message) {
+                            errorMessage = errorData.message;
+                        }
+                    } else {
+                        const errorText = await responseClone.text();
+                        if (errorText && errorText.trim()) {
+                            errorMessage = errorText;
+                        }
+                    }
+                } catch (e) {
+                    // Если не удалось прочитать тело ответа, используем статус код
+                    console.warn('Could not read error response body:', e);
+                }
+                throw new Error(errorMessage);
             }
             
             return response;
