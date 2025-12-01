@@ -6,10 +6,13 @@ flask==3.0.0
 flask-cors==4.0.0
 
 # AI Providers
-openai==1.12.0
+openai>=1.54.0  # Updated to fix httpx compatibility issue
 google-generativeai>=0.8.0  # Updated for Gemini 1.5 support
 anthropic==0.18.1
 groq>=0.36.0
+
+# HTTP client (required for OpenAI compatibility)
+httpx>=0.27.0,<1.0.0  # Compatible version for OpenAI and Groq
 
 # HTTP Server for production
 gunicorn==21.2.0
