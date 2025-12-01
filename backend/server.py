@@ -1,116 +1,398 @@
 #!/usr/bin/env python3
 """
-Simple HTTP server for Business Assistant Telegram Mini App
+AI Assistant Backend Server
+Supports multiple AI providers: OpenAI, Gemini, Claude, Groq, Mistral
 """
 
-import http.server
-import socketserver
 import os
-import sys
-from urllib.parse import urlparse, parse_qs
+import json
+import time
+from flask import Flask, request, jsonify, Response, stream_with_context
+from flask_cors import CORS
+from dotenv import load_dotenv
 
-class BusinessAssistantHandler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=os.path.dirname(os.path.abspath(__file__)), **kwargs)
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+CORS(app)
+
+# AI Provider Classes
+class AIProvider:
+    """Base class for AI providers"""
     
-    def end_headers(self):
-        # Add CORS headers for development
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        super().end_headers()
+    def __init__(self, api_key=None):
+        self.api_key = api_key
     
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
+    def generate(self, message, **kwargs):
+        raise NotImplementedError
     
-    def do_GET(self):
-        # Handle root path
-        if self.path == '/':
-            self.path = '/index.html'
-        return super().do_GET()
+    def stream(self, message, **kwargs):
+        raise NotImplementedError
+
+
+class OpenAIProvider(AIProvider):
+    """OpenAI GPT-4 Provider"""
     
-    def do_POST(self):
-        # Handle API requests
-        if self.path.startswith('/api/'):
-            self.handle_api_request()
-        else:
-            self.send_error(404, "Not Found")
-    
-    def handle_api_request(self):
-        """Handle mock API requests"""
-        content_length = int(self.headers.get('Content-Length', 0))
-        post_data = self.rfile.read(content_length)
-        
-        # Parse request data
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('OPENAI_API_KEY'))
         try:
-            import json
-            data = json.loads(post_data.decode('utf-8'))
-        except:
-            data = {}
-        
-        # Mock response based on endpoint
-        response_data = self.get_mock_response(self.path, data)
-        
-        # Send response
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        
-        import json
-        self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            import openai
+            self.client = openai.OpenAI(api_key=self.api_key) if self.api_key else None
+        except ImportError:
+            self.client = None
     
-    def get_mock_response(self, path, data):
-        """Generate mock API responses"""
-        mock_responses = {
-            '/api/health': {
-                'status': 'ok',
-                'timestamp': '2024-01-01T00:00:00Z',
-                'version': '1.0.0'
-            },
-            '/api/ai/chat': {
-                'success': True,
-                'data': {
-                    'response': 'Это демонстрационный ответ AI-ассистента. В реальном приложении здесь будет интеллектуальный ответ на основе вашего запроса.',
-                    'suggestions': [
-                        'Расскажи подробнее',
-                        'Покажи примеры',
-                        'Создай отчет'
-                    ]
-                }
+    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("OpenAI API key not configured")
+        
+        response = self.client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        return response.choices[0].message.content
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("OpenAI API key not configured")
+        
+        stream = self.client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+
+class GeminiProvider(AIProvider):
+    """Google Gemini Provider"""
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('GEMINI_API_KEY'))
+        try:
+            import google.generativeai as genai
+            if self.api_key:
+                genai.configure(api_key=self.api_key)
+                self.model = genai.GenerativeModel('gemini-pro')
+            else:
+                self.model = None
+        except ImportError:
+            self.model = None
+    
+    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.model:
+            raise ValueError("Gemini API key not configured")
+        
+        response = self.model.generate_content(
+            message,
+            generation_config={
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
             }
-        }
+        )
         
-        return mock_responses.get(path, {
-            'success': False,
-            'error': 'Endpoint not implemented'
-        })
-
-def main():
-    # Получаем порт из переменной окружения (для Railway) или используем значение по умолчанию
-    PORT = int(os.environ.get('PORT', 8000))
+        return response.text
     
-    # Если порт передан как аргумент командной строки, используем его
-    if len(sys.argv) > 1:
+    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.model:
+            raise ValueError("Gemini API key not configured")
+        
+        response = self.model.generate_content(
+            message,
+            generation_config={
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+            },
+            stream=True
+        )
+        
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
+
+class ClaudeProvider(AIProvider):
+    """Anthropic Claude Provider"""
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('ANTHROPIC_API_KEY'))
         try:
-            PORT = int(sys.argv[1])
-        except ValueError:
-            print("❌ Invalid port number. Using default port.")
+            from anthropic import Anthropic
+            self.client = Anthropic(api_key=self.api_key) if self.api_key else None
+        except ImportError:
+            self.client = None
     
-    # Check if port is available
-    try:
-        with socketserver.TCPServer(("", PORT), BusinessAssistantHandler) as httpd:
-            print(f"🚀 Business Assistant server running on port {PORT}")
-            print(f"📱 Server accessible at http://0.0.0.0:{PORT}")
-            print("🛑 Press Ctrl+C to stop the server")
-            httpd.serve_forever()
-    except OSError as e:
-        if e.errno == 98:  # Address already in use
-            print(f"❌ Port {PORT} is already in use. Try a different port:")
-            print(f"   python server.py {PORT + 1}")
-        else:
-            print(f"❌ Error starting server: {e}")
-        sys.exit(1)
+    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Anthropic API key not configured")
+        
+        response = self.client.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": message}]
+        )
+        
+        return response.content[0].text
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Anthropic API key not configured")
+        
+        with self.client.messages.stream(
+            model="claude-3-opus-20240229",
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": message}]
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
 
-if __name__ == "__main__":
-    main()
+
+class GroqProvider(AIProvider):
+    """Groq (Llama) Provider"""
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('GROQ_API_KEY'))
+        try:
+            from groq import Groq
+            self.client = Groq(api_key=self.api_key) if self.api_key else None
+        except ImportError:
+            self.client = None
+    
+    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Groq API key not configured")
+        
+        response = self.client.chat.completions.create(
+            model="llama-3-70b-8192",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        return response.choices[0].message.content
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Groq API key not configured")
+        
+        stream = self.client.chat.completions.create(
+            model="llama-3-70b-8192",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+
+class MistralProvider(AIProvider):
+    """Mistral AI Provider (using OpenAI-compatible API)"""
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('MISTRAL_API_KEY'))
+        try:
+            import openai
+            if self.api_key:
+                self.client = openai.OpenAI(
+                    api_key=self.api_key,
+                    base_url="https://api.mistral.ai/v1"
+                )
+            else:
+                self.client = None
+        except ImportError:
+            self.client = None
+    
+    def generate(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Mistral API key not configured")
+        
+        response = self.client.chat.completions.create(
+            model="mistral-large-latest",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        return response.choices[0].message.content
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, **kwargs):
+        if not self.client:
+            raise ValueError("Mistral API key not configured")
+        
+        stream = self.client.chat.completions.create(
+            model="mistral-large-latest",
+            messages=[{"role": "user", "content": message}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+
+# Provider registry
+PROVIDERS = {
+    'openai': OpenAIProvider,
+    'gemini': GeminiProvider,
+    'claude': ClaudeProvider,
+    'groq': GroqProvider,
+    'mistral': MistralProvider
+}
+
+
+def get_provider(provider_name):
+    """Get provider instance"""
+    provider_class = PROVIDERS.get(provider_name)
+    if not provider_class:
+        raise ValueError(f"Unknown provider: {provider_name}")
+    
+    return provider_class()
+
+
+@app.route('/api/health', methods=['GET'])
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'ok',
+        'timestamp': time.time(),
+        'version': '1.0.0'
+    })
+
+
+@app.route('/api/providers', methods=['GET'])
+@app.route('/providers', methods=['GET'])
+def get_providers():
+    """Get list of available providers"""
+    available = []
+    for name, provider_class in PROVIDERS.items():
+        try:
+            provider = provider_class()
+            if provider.api_key:
+                available.append(name)
+        except:
+            pass
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'providers': available,
+            'all': list(PROVIDERS.keys())
+        }
+    })
+
+
+@app.route('/api/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Non-streaming chat endpoint"""
+    try:
+        data = request.get_json()
+        message = data.get('message', '')
+        provider_name = data.get('provider', 'openai')
+        temperature = float(data.get('temperature', 0.7))
+        max_tokens = int(data.get('maxTokens', 2000))
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'Message is required'
+            }), 400
+        
+        provider = get_provider(provider_name)
+        response = provider.generate(
+            message,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'response': response,
+                'provider': provider_name
+            }
+        })
+    
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/stream', methods=['POST'])
+@app.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    """Streaming chat endpoint"""
+    try:
+        data = request.get_json()
+        message = data.get('message', '')
+        provider_name = data.get('provider', 'openai')
+        temperature = float(data.get('temperature', 0.7))
+        max_tokens = int(data.get('maxTokens', 2000))
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'Message is required'
+            }), 400
+        
+        provider = get_provider(provider_name)
+        
+        def generate():
+            try:
+                for chunk in provider.stream(
+                    message,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ):
+                    yield f"data: {json.dumps({'content': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+    
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port, debug=True)
