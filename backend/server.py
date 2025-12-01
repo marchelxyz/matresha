@@ -101,39 +101,80 @@ class GeminiProvider(AIProvider):
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('GEMINI_API_KEY'))
         self.model_name = None
+        self.model = None
+        self.genai = None
         try:
             import google.generativeai as genai
+            self.genai = genai
             if self.api_key:
                 genai.configure(api_key=self.api_key)
-                # Use newer model: gemini-1.5-pro or gemini-1.5-flash
-                # Try gemini-1.5-flash first (faster), fallback to gemini-1.5-pro
-                try:
-                    self.model = genai.GenerativeModel('gemini-1.5-flash')
-                    self.model_name = 'gemini-1.5-flash'
-                    print("Gemini: Using gemini-1.5-flash model")
-                except Exception as e1:
+                # Try models in order of compatibility (most compatible first)
+                # Start with gemini-pro (most widely available), then try newer models
+                model_attempts = [
+                    ('gemini-pro', 'gemini-pro'),
+                    ('gemini-1.5-pro', 'gemini-1.5-pro'),
+                    ('gemini-1.5-flash', 'gemini-1.5-flash'),
+                ]
+                
+                for model_display_name, model_id in model_attempts:
                     try:
-                        self.model = genai.GenerativeModel('gemini-1.5-pro')
-                        self.model_name = 'gemini-1.5-pro'
-                        print("Gemini: Using gemini-1.5-pro model (fallback)")
-                    except Exception as e2:
-                        # Fallback to older model
-                        try:
-                            self.model = genai.GenerativeModel('gemini-pro')
-                            self.model_name = 'gemini-pro'
-                            print("Gemini: Using gemini-pro model (legacy fallback)")
-                        except Exception as e3:
-                            print(f"Gemini: Failed to initialize any model. Errors: {e1}, {e2}, {e3}")
-                            self.model = None
-                            self.model_name = None
-                self.genai = genai
+                        # Test if model is available by trying to create it
+                        test_model = genai.GenerativeModel(model_id)
+                        # Try to list models to verify availability
+                        self.model = test_model
+                        self.model_name = model_id
+                        print(f"Gemini: Successfully initialized model {model_display_name} ({model_id})")
+                        break
+                    except Exception as e:
+                        print(f"Gemini: Model {model_display_name} ({model_id}) not available: {str(e)}")
+                        continue
+                
+                if not self.model:
+                    print("Gemini: Warning - No compatible model found. Will attempt to use gemini-pro on first request.")
+                    # Set a default, but will try to initialize on first use
+                    self.model_name = 'gemini-pro'
             else:
-                self.model = None
-                self.genai = None
+                print("Gemini: API key not configured")
         except ImportError:
             print("Gemini: google-generativeai library not installed")
             self.model = None
             self.genai = None
+    
+    def _ensure_model_initialized(self, exclude_models=None):
+        """Ensure model is initialized, try to initialize if not
+        
+        Args:
+            exclude_models: List of model names to exclude from attempts
+        """
+        if self.model:
+            return True
+        
+        if not self.genai or not self.api_key:
+            return False
+        
+        exclude_models = exclude_models or []
+        
+        # Try to initialize model with fallback
+        model_attempts = [
+            ('gemini-pro', 'gemini-pro'),
+            ('gemini-1.5-pro', 'gemini-1.5-pro'),
+            ('gemini-1.5-flash', 'gemini-1.5-flash'),
+        ]
+        
+        for model_display_name, model_id in model_attempts:
+            if model_id in exclude_models:
+                print(f"Gemini: Skipping model {model_display_name} ({model_id}) - already tried")
+                continue
+            try:
+                self.model = self.genai.GenerativeModel(model_id)
+                self.model_name = model_id
+                print(f"Gemini: Successfully initialized model {model_display_name} ({model_id})")
+                return True
+            except Exception as e:
+                print(f"Gemini: Model {model_display_name} ({model_id}) failed: {str(e)}")
+                continue
+        
+        return False
     
     def _convert_messages_to_gemini_format(self, messages):
         """Convert messages from OpenAI format to Gemini format"""
@@ -161,9 +202,14 @@ class GeminiProvider(AIProvider):
         
         return gemini_messages
     
-    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
-        if not self.model:
-            raise ValueError("Gemini API key not configured")
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, retry_count=0, **kwargs):
+        # Ensure model is initialized
+        if not self._ensure_model_initialized():
+            raise ValueError("Gemini API key not configured or no compatible model available")
+        
+        # Prevent infinite recursion
+        if retry_count > 2:
+            raise ValueError("Gemini API: Failed to initialize compatible model after multiple attempts")
         
         try:
             # If we have message history, use ChatSession for proper context
@@ -216,6 +262,22 @@ class GeminiProvider(AIProvider):
                 
         except Exception as e:
             error_msg = str(e)
+            # If model not found, try to reinitialize with fallback
+            if "404" in error_msg and "not found" in error_msg.lower():
+                print(f"Gemini: Model {self.model_name} not available, trying fallback...")
+                # Reset model and try to initialize with fallback
+                old_model_name = self.model_name
+                self.model = None
+                # Exclude the failed model from retry attempts
+                if self._ensure_model_initialized(exclude_models=[old_model_name]) and self.model_name != old_model_name:
+                    # Retry with new model
+                    try:
+                        return self.generate(message, temperature, max_tokens, messages, retry_count=retry_count+1, **kwargs)
+                    except Exception as retry_e:
+                        error_msg = str(retry_e)
+                else:
+                    error_msg = f"Gemini API: No compatible model available. Tried: {old_model_name}"
+            
             # Provide more helpful error messages
             if "API_KEY" in error_msg or "api key" in error_msg.lower():
                 raise ValueError("Gemini API key not configured or invalid")
@@ -224,9 +286,14 @@ class GeminiProvider(AIProvider):
             else:
                 raise ValueError(f"Gemini API error: {error_msg}")
     
-    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
-        if not self.model:
-            raise ValueError("Gemini API key not configured")
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, retry_count=0, **kwargs):
+        # Ensure model is initialized
+        if not self._ensure_model_initialized():
+            raise ValueError("Gemini API key not configured or no compatible model available")
+        
+        # Prevent infinite recursion
+        if retry_count > 2:
+            raise ValueError("Gemini API: Failed to initialize compatible model after multiple attempts")
         
         try:
             # If we have message history, use ChatSession for proper context
@@ -281,6 +348,24 @@ class GeminiProvider(AIProvider):
                 
         except Exception as e:
             error_msg = str(e)
+            # If model not found, try to reinitialize with fallback
+            if "404" in error_msg and "not found" in error_msg.lower():
+                print(f"Gemini: Model {self.model_name} not available, trying fallback...")
+                # Reset model and try to initialize with fallback
+                old_model_name = self.model_name
+                self.model = None
+                # Exclude the failed model from retry attempts
+                if self._ensure_model_initialized(exclude_models=[old_model_name]) and self.model_name != old_model_name:
+                    # Retry with new model
+                    try:
+                        for chunk in self.stream(message, temperature, max_tokens, messages, retry_count=retry_count+1, **kwargs):
+                            yield chunk
+                        return
+                    except Exception as retry_e:
+                        error_msg = str(retry_e)
+                else:
+                    error_msg = f"Gemini API: No compatible model available. Tried: {old_model_name}"
+            
             # Provide more helpful error messages
             if "API_KEY" in error_msg or "api key" in error_msg.lower():
                 raise ValueError("Gemini API key not configured or invalid")
