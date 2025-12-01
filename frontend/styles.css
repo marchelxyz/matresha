@@ -62,6 +62,20 @@ body {
     padding-top: 8px;
 }
 
+.logo-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.app-logo {
+    width: 48px;
+    height: 56px;
+    color: var(--tg-theme-text-color, #212121);
+    display: block;
+}
+
 .app-title {
     font-size: 20px;
     font-weight: 700;
@@ -646,6 +660,11 @@ body {
         min-height: 96px;
     }
     
+    .app-logo {
+        width: 40px;
+        height: 47px;
+    }
+    
     .app-title {
         font-size: 18px;
     }
@@ -696,6 +715,11 @@ body {
 @media (max-width: 480px) {
     .header {
         min-height: 88px;
+    }
+    
+    .app-logo {
+        width: 36px;
+        height: 42px;
     }
     
     .app-title {
