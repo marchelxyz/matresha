@@ -261,7 +261,24 @@ def get_provider(provider_name):
     if not provider_class:
         raise ValueError(f"Unknown provider: {provider_name}")
     
-    return provider_class()
+    provider = provider_class()
+    
+    # Check if API key is configured
+    if not provider.api_key:
+        env_var_name = {
+            'openai': 'OPENAI_API_KEY',
+            'gemini': 'GEMINI_API_KEY',
+            'claude': 'ANTHROPIC_API_KEY',
+            'groq': 'GROQ_API_KEY',
+            'mistral': 'MISTRAL_API_KEY'
+        }.get(provider_name, f'{provider_name.upper()}_API_KEY')
+        
+        raise ValueError(
+            f"{provider_name.capitalize()} API key not configured. "
+            f"Please set {env_var_name} environment variable."
+        )
+    
+    return provider
 
 
 @app.route('/api/health', methods=['GET'])
@@ -275,24 +292,88 @@ def health():
     })
 
 
+@app.route('/api/debug/env', methods=['GET'])
+@app.route('/debug/env', methods=['GET'])
+def debug_env():
+    """Debug endpoint to check environment variables (without exposing keys)"""
+    env_vars = {}
+    for key in os.environ.keys():
+        if 'API_KEY' in key or 'KEY' in key:
+            value = os.environ.get(key)
+            env_vars[key] = {
+                'exists': True,
+                'has_value': bool(value),
+                'length': len(value) if value else 0,
+                'starts_with': value[:4] if value and len(value) >= 4 else None,
+                'ends_with': value[-4:] if value and len(value) >= 4 else None
+            }
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'env_vars': env_vars,
+            'total_env_vars': len(os.environ),
+            'api_key_vars_found': len([k for k in os.environ.keys() if 'API_KEY' in k])
+        }
+    })
+
+
 @app.route('/api/providers', methods=['GET'])
 @app.route('/providers', methods=['GET'])
 def get_providers():
     """Get list of available providers"""
     available = []
+    provider_status = {}
+    env_vars_status = {}
+    
+    # Check environment variables directly
+    env_var_map = {
+        'openai': 'OPENAI_API_KEY',
+        'gemini': 'GEMINI_API_KEY',
+        'claude': 'ANTHROPIC_API_KEY',
+        'groq': 'GROQ_API_KEY',
+        'mistral': 'MISTRAL_API_KEY'
+    }
+    
+    for name, env_var in env_var_map.items():
+        env_value = os.getenv(env_var)
+        env_vars_status[env_var] = {
+            'exists': env_value is not None,
+            'has_value': bool(env_value),
+            'length': len(env_value) if env_value else 0,
+            'starts_with': env_value[:4] if env_value and len(env_value) >= 4 else None
+        }
+    
     for name, provider_class in PROVIDERS.items():
         try:
             provider = provider_class()
-            if provider.api_key:
+            has_key = bool(provider.api_key)
+            provider_status[name] = {
+                'available': has_key,
+                'has_key': has_key,
+                'env_var': env_var_map.get(name),
+                'env_var_exists': os.getenv(env_var_map.get(name)) is not None
+            }
+            if has_key:
                 available.append(name)
-        except:
-            pass
+        except Exception as e:
+            provider_status[name] = {
+                'available': False,
+                'error': str(e),
+                'env_var': env_var_map.get(name),
+                'env_var_exists': os.getenv(env_var_map.get(name)) is not None
+            }
     
     return jsonify({
         'success': True,
         'data': {
             'providers': available,
-            'all': list(PROVIDERS.keys())
+            'all': list(PROVIDERS.keys()),
+            'status': provider_status,
+            'env_vars': env_vars_status,
+            'debug': {
+                'python_env_keys': [k for k in os.environ.keys() if 'API_KEY' in k or 'KEY' in k]
+            }
         }
     })
 

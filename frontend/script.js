@@ -324,8 +324,22 @@ async function streamAIResponse(userMessage, botMessageContainer) {
         }
     } catch (error) {
         console.error('API error:', error);
-        // Fallback to simulated response
-        await simulateStreamingResponse(userMessage, botMessageContainer);
+        
+        // Show actual error message instead of fallback
+        const errorMessage = error.message || 'Неизвестная ошибка';
+        const isNetworkError = errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError');
+        const isConfigError = errorMessage.includes('API key not configured');
+        
+        let userFriendlyError = '';
+        if (isNetworkError) {
+            userFriendlyError = `❌ Ошибка подключения к серверу.\n\nПроверьте:\n• Правильно ли настроен API_BASE_URL в telegram-config.js\n• Доступен ли backend сервер\n• Нет ли проблем с сетью\n\nТехническая ошибка: ${errorMessage}`;
+        } else if (isConfigError) {
+            userFriendlyError = `❌ API ключ не настроен.\n\nДля использования ${providers[currentProvider]?.name || currentProvider} необходимо:\n• Добавить ${currentProvider.toUpperCase()}_API_KEY в переменные окружения Railway\n• Перезапустить сервер после добавления ключа\n\nТехническая ошибка: ${errorMessage}`;
+        } else {
+            userFriendlyError = `❌ Произошла ошибка при обращении к API.\n\nОшибка: ${errorMessage}\n\nПроверьте логи сервера для получения дополнительной информации.`;
+        }
+        
+        updateBotMessage(botMessageContainer, userFriendlyError);
     }
 }
 
