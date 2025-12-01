@@ -837,3 +837,75 @@ body {
 .chat-messages::-webkit-scrollbar-thumb:hover {
     background: var(--tg-theme-text-color, #999);
 }
+
+/* Scroll to bottom button */
+.scroll-to-bottom-btn {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--tg-theme-button-color, #007bff);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 60;
+    transition: all 0.3s ease;
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+.scroll-to-bottom-btn.show {
+    display: flex;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.scroll-to-bottom-btn:hover {
+    background: var(--tg-theme-button-color, #0056b3);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.scroll-to-bottom-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.scroll-to-bottom-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+@media (max-width: 768px) {
+    .scroll-to-bottom-btn {
+        bottom: 90px;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+    }
+    
+    .scroll-to-bottom-btn svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+@media (max-width: 480px) {
+    .scroll-to-bottom-btn {
+        bottom: 80px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+    }
+    
+    .scroll-to-bottom-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+}

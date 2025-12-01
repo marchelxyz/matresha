@@ -15,6 +15,7 @@ const settingsProvider = document.getElementById('settingsProvider');
 const temperature = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
 const maxTokens = document.getElementById('maxTokens');
+const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
 
 // State
 let isProcessing = false;
@@ -153,6 +154,11 @@ async function initApp() {
     
     // Load chat history
     await loadChatHistory();
+    
+    // Проверить видимость кнопки прокрутки после загрузки
+    setTimeout(() => {
+        updateScrollButtonVisibility();
+    }, 200);
 }
 
 // Setup event listeners
@@ -166,6 +172,21 @@ function setupEventListeners() {
     
     // Auto-resize textarea
     messageInput.addEventListener('input', autoResizeTextarea);
+    
+    // Scroll to bottom button
+    if (scrollToBottomBtn) {
+        scrollToBottomBtn.addEventListener('click', handleScrollToBottomClick);
+    }
+    
+    // Track scroll position to show/hide scroll button
+    if (chatMessages) {
+        chatMessages.addEventListener('scroll', updateScrollButtonVisibility);
+        // Также проверяем при изменении размера контента
+        const resizeObserver = new ResizeObserver(() => {
+            updateScrollButtonVisibility();
+        });
+        resizeObserver.observe(chatMessages);
+    }
     
     // Provider selector (если существует)
     if (aiProvider) {
@@ -545,7 +566,28 @@ function addMessage(text, sender) {
 function scrollToBottom() {
     requestAnimationFrame(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
+        // Скрыть кнопку после прокрутки вниз
+        updateScrollButtonVisibility();
     });
+}
+
+// Update scroll button visibility based on scroll position
+function updateScrollButtonVisibility() {
+    if (!scrollToBottomBtn || !chatMessages) return;
+    
+    // Проверяем, находится ли пользователь внизу (с небольшим допуском в 100px)
+    const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+    
+    if (isAtBottom) {
+        scrollToBottomBtn.classList.remove('show');
+    } else {
+        scrollToBottomBtn.classList.add('show');
+    }
+}
+
+// Scroll to bottom button click handler
+function handleScrollToBottomClick() {
+    scrollToBottom();
 }
 
 // Load chat history from server
@@ -573,7 +615,10 @@ async function loadChatHistory() {
                     }
                 });
                 
-                scrollToBottom();
+                // Прокрутить вниз после загрузки всех сообщений
+                setTimeout(() => {
+                    scrollToBottom();
+                }, 100);
                 console.log(`Loaded ${result.data.messages.length} messages from history`);
             } else if (result.data.chats && result.data.chats.length > 0) {
                 // If we have chats but no messages, load the most recent chat's messages
@@ -587,7 +632,10 @@ async function loadChatHistory() {
                                 addMessageFromHistory(msg.content, msg.role);
                             }
                         });
-                        scrollToBottom();
+                        // Прокрутить вниз после загрузки всех сообщений
+                        setTimeout(() => {
+                            scrollToBottom();
+                        }, 100);
                         console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
                     }
                 }
