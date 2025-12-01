@@ -19,6 +19,9 @@ from werkzeug.utils import secure_filename
 # Import database
 from database import SessionLocal, Chat, Message, get_db
 
+# Import storage
+from storage import storage
+
 # Load environment variables
 load_dotenv()
 
@@ -786,6 +789,16 @@ def process_file(file):
         file.seek(0)  # Reset file pointer to beginning
         file_data = file.read()
         
+        # Сохраняем файл в хранилище (если настроено)
+        storage_info = None
+        if storage.enabled:
+            storage_info = storage.upload_file(
+                file_data=file_data,
+                filename=filename,
+                content_type=content_type,
+                folder='chat-files'
+            )
+        
         # Process images
         if content_type.startswith('image/'):
             file_base64 = base64.b64encode(file_data).decode('utf-8')
@@ -800,13 +813,20 @@ def process_file(file):
             except Exception:
                 pass
             
-            return {
+            result = {
                 'type': 'image',
                 'filename': filename,
                 'content_type': content_type,
                 'base64': file_base64,
                 'description': image_info
             }
+            
+            # Добавляем информацию о хранилище, если файл был сохранен
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\nФайл сохранен в облаке: {storage_info["url"]}'
+            
+            return result
         
         # Process PDF files
         elif content_type == 'application/pdf' or file_extension == 'pdf':
@@ -826,18 +846,29 @@ def process_file(file):
                     # Limit text length
                     if len(full_text) > 5000:
                         full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
-                    return {
+                    result = {
                         'type': 'pdf',
                         'filename': filename,
                         'content': full_text,
                         'description': f'PDF файл {filename}:\n{full_text}'
                     }
+                    
+                    # Добавляем информацию о хранилище, если файл был сохранен
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    
+                    return result
                 else:
-                    return {
+                    result = {
                         'type': 'pdf',
                         'filename': filename,
                         'description': f'PDF файл: {filename} (не удалось извлечь текст, возможно это сканированное изображение)'
                     }
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    return result
             except ImportError:
                 return {
                     'type': 'pdf',
@@ -877,18 +908,29 @@ def process_file(file):
                 if full_text:
                     if len(full_text) > 5000:
                         full_text = full_text[:5000] + '\n\n[... текст обрезан ...]'
-                    return {
+                    result = {
                         'type': 'docx',
                         'filename': filename,
                         'content': full_text,
                         'description': f'Word документ {filename}:\n{full_text}'
                     }
+                    
+                    # Добавляем информацию о хранилище, если файл был сохранен
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    
+                    return result
                 else:
-                    return {
+                    result = {
                         'type': 'docx',
                         'filename': filename,
                         'description': f'Word документ: {filename} (документ пуст)'
                     }
+                    if storage_info:
+                        result['storage'] = storage_info
+                        result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                    return result
             except ImportError:
                 return {
                     'type': 'docx',
@@ -927,12 +969,19 @@ def process_file(file):
                 if len(full_text) > 5000:
                     full_text = full_text[:5000] + '\n\n[... данные обрезаны ...]'
                 
-                return {
+                result = {
                     'type': 'excel',
                     'filename': filename,
                     'content': full_text,
                     'description': f'Excel файл {filename}:\n{full_text}'
                 }
+                
+                # Добавляем информацию о хранилище, если файл был сохранен
+                if storage_info:
+                    result['storage'] = storage_info
+                    result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+                
+                return result
             except ImportError:
                 return {
                     'type': 'excel',
@@ -960,21 +1009,32 @@ def process_file(file):
             if len(text_content) > 5000:
                 text_content = text_content[:5000] + '\n\n[... текст обрезан ...]'
             
-            return {
+            result = {
                 'type': 'text',
                 'filename': filename,
                 'content': text_content,
                 'description': f'Текстовый файл {filename}:\n{text_content}'
             }
+            
+            # Добавляем информацию о хранилище, если файл был сохранен
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+            
+            return result
         
         # Other file types
         else:
-            return {
+            result = {
                 'type': 'other',
                 'filename': filename,
                 'content_type': content_type,
                 'description': f'Файл: {filename} (тип: {content_type}) - содержимое не может быть обработано автоматически'
             }
+            if storage_info:
+                result['storage'] = storage_info
+                result['description'] += f'\n\nФайл сохранен в облаке: {storage_info["url"]}'
+            return result
     
     except Exception as e:
         import traceback
