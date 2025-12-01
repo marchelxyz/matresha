@@ -428,10 +428,33 @@ def chat_stream():
     """Streaming chat endpoint"""
     try:
         data = request.get_json()
+        
+        # Логирование для отладки
+        if not data:
+            print("ERROR: Request body is None or empty")
+            return jsonify({
+                'success': False,
+                'error': 'Request body is required (JSON)'
+            }), 400
+        
+        # Логируем полученные данные (без чувствительной информации)
+        print(f"DEBUG: Received stream request - provider: {data.get('provider')}, "
+              f"has_message: {bool(data.get('message'))}, "
+              f"message_length: {len(data.get('message', ''))}")
+        
         message = data.get('message', '')
         provider_name = data.get('provider', 'openai')
-        temperature = float(data.get('temperature', 0.7))
-        max_tokens = int(data.get('maxTokens', 2000))
+        
+        # Безопасное получение параметров с валидацией
+        try:
+            temperature = float(data.get('temperature', 0.7))
+        except (ValueError, TypeError):
+            temperature = 0.7
+        
+        try:
+            max_tokens = int(data.get('maxTokens', 2000))
+        except (ValueError, TypeError):
+            max_tokens = 2000
         
         if not message:
             return jsonify({
@@ -439,7 +462,21 @@ def chat_stream():
                 'error': 'Message is required'
             }), 400
         
-        provider = get_provider(provider_name)
+        if not isinstance(message, str) or len(message.strip()) == 0:
+            print(f"ERROR: Invalid message - type: {type(message)}, value: {repr(message)}")
+            return jsonify({
+                'success': False,
+                'error': 'Message must be a non-empty string'
+            }), 400
+        
+        try:
+            provider = get_provider(provider_name)
+        except ValueError as e:
+            print(f"ERROR: Provider error - {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 400
         
         def generate():
             try:

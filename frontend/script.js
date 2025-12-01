@@ -255,13 +255,20 @@ function updateBotMessage({ textDiv }, text) {
 async function streamAIResponse(userMessage, botMessageContainer) {
     try {
         // Try to use real API
+        // Извлекаем только необходимые данные пользователя для отправки
+        const userData = tg.initDataUnsafe?.user ? {
+            id: tg.initDataUnsafe.user.id,
+            first_name: tg.initDataUnsafe.user.first_name,
+            username: tg.initDataUnsafe.user.username
+        } : undefined;
+        
         const response = await api.streamMessage(
             userMessage,
             currentProvider,
             {
                 temperature: currentSettings.temperature,
                 maxTokens: currentSettings.maxTokens,
-                user: tg.initDataUnsafe?.user
+                ...(userData && { user: userData })
             }
         );
         
@@ -306,13 +313,19 @@ async function streamAIResponse(userMessage, botMessageContainer) {
             }
         } else {
             // Fallback to non-streaming
+            const userData = tg.initDataUnsafe?.user ? {
+                id: tg.initDataUnsafe.user.id,
+                first_name: tg.initDataUnsafe.user.first_name,
+                username: tg.initDataUnsafe.user.username
+            } : undefined;
+            
             const result = await api.sendMessage(
                 userMessage,
                 currentProvider,
                 {
                     temperature: currentSettings.temperature,
                     maxTokens: currentSettings.maxTokens,
-                    user: tg.initDataUnsafe?.user
+                    ...(userData && { user: userData })
                 }
             );
             
