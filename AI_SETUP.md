@@ -103,8 +103,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 5. Скопируйте ключ
 
 ### Модели:
-- `llama-3-70b-8192` - Llama 3 70B (используется по умолчанию)
-- `llama-3-8b-8192` - Llama 3 8B (быстрее)
+- `llama-3.1-70b-versatile` - Llama 3.1 70B (используется по умолчанию)
+- `llama-3.1-8b-instant` - Llama 3.1 8B (быстрее)
+- `llama-3-8b-8192` - Llama 3 8B (старая версия)
 - `mixtral-8x7b-32768` - Mixtral модель
 
 ### Цены:

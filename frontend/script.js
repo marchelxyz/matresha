@@ -30,7 +30,7 @@ const providers = {
     openai: { name: 'GPT-4', model: 'gpt-4-turbo-preview' },
     gemini: { name: 'Gemini Pro', model: 'gemini-pro' },
     claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
-    groq: { name: 'Llama 3', model: 'llama-3-70b-8192' },
+    groq: { name: 'Llama 3.1', model: 'llama-3.1-70b-versatile' },
     mistral: { name: 'Mistral Large', model: 'mistral-large-latest' }
 };
 
