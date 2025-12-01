@@ -499,15 +499,16 @@ class ClaudeProvider(AIProvider):
 def estimate_tokens(text):
     """
     Оценка количества токенов в тексте.
-    Использует приблизительную оценку: для английского текста ~4 символа на токен,
+    Использует консервативную оценку: для английского текста ~4 символа на токен,
     для русского и других языков ~2-3 символа на токен.
-    Берем среднее значение ~3 символа на токен для безопасности.
+    Берем более консервативное значение ~2.5 символа на токен для безопасности.
     """
     if not text:
         return 0
-    # Более точная оценка: учитываем пробелы и знаки препинания
-    # Для смешанного контента используем ~3 символа на токен
-    return len(text) // 3
+    # Более консервативная оценка: учитываем пробелы и знаки препинания
+    # Для смешанного контента используем ~2.5 символа на токен (было 3)
+    # Это даст более точную оценку и поможет избежать превышения лимитов
+    return int(len(text) / 2.5)
 
 
 def estimate_messages_tokens(messages):
@@ -518,7 +519,8 @@ def estimate_messages_tokens(messages):
     total_tokens = 0
     for msg in messages:
         # Overhead для структуры сообщения (role, форматирование)
-        total_tokens += 5
+        # Увеличиваем overhead для более точной оценки
+        total_tokens += 8  # Было 5, увеличиваем для безопасности
         content = msg.get('content', '')
         if isinstance(content, str):
             total_tokens += estimate_tokens(content)
@@ -585,17 +587,24 @@ def split_large_request(messages, max_tokens=10000):
                 if estimate_messages_tokens(new_messages) <= max_tokens:
                     return [new_messages]
     
-    # Если последнее сообщение не слишком большое, просто возвращаем как есть
-    if not isinstance(last_content, str) or len(last_content) <= max_tokens * 3:
-        # Пробуем сократить историю еще больше
-        if len(messages) > 2:
-            # Оставляем только последние 2-3 сообщения
-            return [messages[-3:] if len(messages) >= 3 else messages]
+    # Если последнее сообщение не слишком большое, проверяем общий размер
+    if not isinstance(last_content, str) or len(last_content) <= max_tokens * 2.5:
+        # Если общий размер все еще превышает лимит, сокращаем историю
+        if total_tokens > max_tokens:
+            # Пробуем сократить историю еще больше
+            if len(messages) > 2:
+                # Оставляем только последние 2-3 сообщения
+                reduced_messages = messages[-3:] if len(messages) >= 3 else messages
+                if estimate_messages_tokens(reduced_messages) <= max_tokens:
+                    return [reduced_messages]
+                # Если все еще слишком много, оставляем только последнее сообщение
+                return [[last_message]]
         return [messages]
     
     # Разбиваем последнее сообщение на части
     parts = []
-    chunk_size = max_tokens * 3  # Размер чанка в символах (с запасом)
+    # Уменьшаем размер чанка для более консервативного разбиения
+    chunk_size = int(max_tokens * 2.5)  # Было max_tokens * 3, уменьшаем до 2.5
     
     # Разбиваем по предложениям/абзацам для более естественного разбиения
     paragraphs = last_content.split('\n\n')
@@ -636,7 +645,9 @@ def split_large_request(messages, max_tokens=10000):
                 chunk_content = '. '.join(current_chunk) + '.'
                 base_messages = messages[:-1] if len(messages) > 1 else []
                 chunk_messages = base_messages + [{"role": last_message['role'], "content": chunk_content}]
-                parts.append(chunk_messages)
+                # Проверяем размер перед добавлением
+                if estimate_messages_tokens(chunk_messages) <= max_tokens:
+                    parts.append(chunk_messages)
                 current_chunk = [sentence]
                 current_size = sentence_size
             else:
@@ -649,16 +660,31 @@ def split_large_request(messages, max_tokens=10000):
                 chunk_content += '.'
             base_messages = messages[:-1] if len(messages) > 1 else []
             chunk_messages = base_messages + [{"role": last_message['role'], "content": chunk_content}]
-            parts.append(chunk_messages)
+            # Проверяем размер перед добавлением
+            if estimate_messages_tokens(chunk_messages) <= max_tokens:
+                parts.append(chunk_messages)
     
     # Если все еще не удалось разбить, используем простое разбиение по символам
     if len(parts) == 0 or (len(parts) == 1 and estimate_messages_tokens(parts[0]) > max_tokens):
         parts = []
         base_messages = messages[:-1] if len(messages) > 1 else []
-        for i in range(0, len(last_content), chunk_size):
-            chunk_content = last_content[i:i+chunk_size]
+        # Еще больше уменьшаем размер чанка для финального разбиения
+        final_chunk_size = int(max_tokens * 2.0)  # Еще более консервативно
+        for i in range(0, len(last_content), final_chunk_size):
+            chunk_content = last_content[i:i+final_chunk_size]
             chunk_messages = base_messages + [{"role": last_message['role'], "content": chunk_content}]
-            parts.append(chunk_messages)
+            # Проверяем размер перед добавлением
+            if estimate_messages_tokens(chunk_messages) <= max_tokens:
+                parts.append(chunk_messages)
+            else:
+                # Если даже один чанк слишком большой, разбиваем еще мельче
+                # Разбиваем на части по половине размера
+                sub_chunk_size = final_chunk_size // 2
+                for j in range(i, min(i + final_chunk_size, len(last_content)), sub_chunk_size):
+                    sub_chunk_content = last_content[j:j+sub_chunk_size]
+                    sub_chunk_messages = base_messages + [{"role": last_message['role'], "content": sub_chunk_content}]
+                    if estimate_messages_tokens(sub_chunk_messages) <= max_tokens:
+                        parts.append(sub_chunk_messages)
     
     return parts if parts else [messages]
 
@@ -669,7 +695,8 @@ class GroqProvider(AIProvider):
     # Лимит токенов для Groq on_demand tier
     MAX_TOKENS_LIMIT = 12000
     # Безопасный лимит с запасом (оставляем место для ответа)
-    SAFE_TOKENS_LIMIT = 10000
+    # Очень консервативный подход - разбиваем запросы на маленькие части
+    SAFE_TOKENS_LIMIT = 1000  # Установлен в 1000 для максимальной безопасности
     
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
@@ -727,10 +754,17 @@ class GroqProvider(AIProvider):
                         status_code = e.response.status_code
                     
                     # Если ошибка 413 (Request too large), пытаемся разбить еще мельче
-                    if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower():
-                        print(f"WARNING: Part {i+1} still too large, trying smaller chunks")
-                        # Разбиваем эту часть еще мельче
-                        smaller_parts = split_large_request(part, self.SAFE_TOKENS_LIMIT // 2)
+                    if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
+                        print(f"WARNING: Part {i+1} still too large ({error_msg}), trying smaller chunks")
+                        # Разбиваем эту часть еще мельче - используем более агрессивное разбиение
+                        smaller_limit = self.SAFE_TOKENS_LIMIT // 2  # Половина от безопасного лимита
+                        smaller_parts = split_large_request(part, smaller_limit)
+                        
+                        # Если все еще одна часть, разбиваем еще мельче
+                        if len(smaller_parts) == 1:
+                            smaller_limit = self.SAFE_TOKENS_LIMIT // 4  # Четверть от безопасного лимита
+                            smaller_parts = split_large_request(part, smaller_limit)
+                        
                         for smaller_part in smaller_parts:
                             try:
                                 response = self.client.chat.completions.create(
@@ -741,7 +775,32 @@ class GroqProvider(AIProvider):
                                 )
                                 responses.append(response.choices[0].message.content)
                             except Exception as inner_e:
-                                raise ValueError(f"Groq API ошибка при обработке части запроса: {str(inner_e)}")
+                                inner_error_msg = str(inner_e)
+                                inner_status_code = None
+                                if hasattr(inner_e, 'status_code'):
+                                    inner_status_code = inner_e.status_code
+                                elif hasattr(inner_e, 'response') and hasattr(inner_e.response, 'status_code'):
+                                    inner_status_code = inner_e.response.status_code
+                                
+                                # Если все еще ошибка 413, разбиваем еще мельче
+                                if inner_status_code == 413 or '413' in inner_error_msg or 'Request too large' in inner_error_msg or 'tokens per minute' in inner_error_msg.lower() or 'TPM' in inner_error_msg:
+                                    print(f"WARNING: Sub-part still too large, trying even smaller chunks")
+                                    # Разбиваем на очень маленькие части
+                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    tiny_parts = split_large_request(smaller_part, tiny_limit)
+                                    for tiny_part in tiny_parts:
+                                        try:
+                                            response = self.client.chat.completions.create(
+                                                model="llama-3.3-70b-versatile",
+                                                messages=tiny_part,
+                                                temperature=temperature,
+                                                max_tokens=max_tokens
+                                            )
+                                            responses.append(response.choices[0].message.content)
+                                        except Exception as tiny_e:
+                                            raise ValueError(f"Groq API ошибка при обработке микрочасти запроса: {str(tiny_e)}")
+                                else:
+                                    raise ValueError(f"Groq API ошибка при обработке части запроса: {inner_error_msg}")
                     else:
                         raise ValueError(f"Groq API ошибка: {error_msg}")
             
@@ -768,10 +827,18 @@ class GroqProvider(AIProvider):
                     status_code = e.response.status_code
                 
                 # Если ошибка 413, пытаемся разбить запрос
-                if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower():
-                    print(f"INFO: Request too large, splitting into smaller parts")
+                if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
+                    print(f"INFO: Request too large ({error_msg}), splitting into smaller parts")
+                    # Используем более агрессивное разбиение
                     request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+                    
+                    # Если все еще одна часть, разбиваем еще мельче
+                    if len(request_parts) == 1:
+                        print(f"INFO: Request still too large after first split, trying smaller limit")
+                        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT // 2)
+                    
                     if len(request_parts) > 1:
+                        # Рекурсивно обрабатываем разбитые части
                         return self.generate(message, temperature, max_tokens, messages, **kwargs)
                 raise ValueError(f"Groq API ошибка: {error_msg}")
     
@@ -822,10 +889,17 @@ class GroqProvider(AIProvider):
                         status_code = e.response.status_code
                     
                     # Если ошибка 413 (Request too large), пытаемся разбить еще мельче
-                    if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower():
-                        print(f"WARNING: Part {i+1} still too large, trying smaller chunks")
-                        # Разбиваем эту часть еще мельче
-                        smaller_parts = split_large_request(part, self.SAFE_TOKENS_LIMIT // 2)
+                    if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
+                        print(f"WARNING: Part {i+1} still too large ({error_msg}), trying smaller chunks")
+                        # Разбиваем эту часть еще мельче - используем более агрессивное разбиение
+                        smaller_limit = self.SAFE_TOKENS_LIMIT // 2  # Половина от безопасного лимита
+                        smaller_parts = split_large_request(part, smaller_limit)
+                        
+                        # Если все еще одна часть, разбиваем еще мельче
+                        if len(smaller_parts) == 1:
+                            smaller_limit = self.SAFE_TOKENS_LIMIT // 4  # Четверть от безопасного лимита
+                            smaller_parts = split_large_request(part, smaller_limit)
+                        
                         for j, smaller_part in enumerate(smaller_parts):
                             if j > 0:
                                 yield f"\n\n--- Подчасть {i+1}.{j+1} ---\n\n"
@@ -843,7 +917,39 @@ class GroqProvider(AIProvider):
                                         if delta and hasattr(delta, 'content') and delta.content:
                                             yield delta.content
                             except Exception as inner_e:
-                                raise ValueError(f"Groq API ошибка при обработке части запроса: {str(inner_e)}")
+                                inner_error_msg = str(inner_e)
+                                inner_status_code = None
+                                if hasattr(inner_e, 'status_code'):
+                                    inner_status_code = inner_e.status_code
+                                elif hasattr(inner_e, 'response') and hasattr(inner_e.response, 'status_code'):
+                                    inner_status_code = inner_e.response.status_code
+                                
+                                # Если все еще ошибка 413, разбиваем еще мельче
+                                if inner_status_code == 413 or '413' in inner_error_msg or 'Request too large' in inner_error_msg or 'tokens per minute' in inner_error_msg.lower() or 'TPM' in inner_error_msg:
+                                    print(f"WARNING: Sub-part {i+1}.{j+1} still too large, trying even smaller chunks")
+                                    # Разбиваем на очень маленькие части
+                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    tiny_parts = split_large_request(smaller_part, tiny_limit)
+                                    for k, tiny_part in enumerate(tiny_parts):
+                                        if k > 0:
+                                            yield f"\n\n--- Микрочасть {i+1}.{j+1}.{k+1} ---\n\n"
+                                        try:
+                                            stream = self.client.chat.completions.create(
+                                                model="llama-3.3-70b-versatile",
+                                                messages=tiny_part,
+                                                temperature=temperature,
+                                                max_tokens=max_tokens,
+                                                stream=True
+                                            )
+                                            for chunk in stream:
+                                                if chunk.choices and len(chunk.choices) > 0:
+                                                    delta = chunk.choices[0].delta
+                                                    if delta and hasattr(delta, 'content') and delta.content:
+                                                        yield delta.content
+                                        except Exception as tiny_e:
+                                            raise ValueError(f"Groq API ошибка при обработке микрочасти запроса: {str(tiny_e)}")
+                                else:
+                                    raise ValueError(f"Groq API ошибка при обработке части запроса: {inner_error_msg}")
                     else:
                         raise ValueError(f"Groq API ошибка: {error_msg}")
         else:
@@ -873,9 +979,16 @@ class GroqProvider(AIProvider):
                     status_code = e.response.status_code
                 
                 # Если ошибка 413, пытаемся разбить запрос
-                if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower():
-                    print(f"INFO: Request too large, splitting into smaller parts")
+                if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
+                    print(f"INFO: Request too large ({error_msg}), splitting into smaller parts")
+                    # Используем более агрессивное разбиение
                     request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+                    
+                    # Если все еще одна часть, разбиваем еще мельче
+                    if len(request_parts) == 1:
+                        print(f"INFO: Request still too large after first split, trying smaller limit")
+                        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT // 2)
+                    
                     if len(request_parts) > 1:
                         # Обрабатываем каждую часть отдельно
                         for i, part in enumerate(request_parts):
@@ -895,7 +1008,39 @@ class GroqProvider(AIProvider):
                                         if delta and hasattr(delta, 'content') and delta.content:
                                             yield delta.content
                             except Exception as part_e:
-                                raise ValueError(f"Groq API ошибка при обработке части запроса: {str(part_e)}")
+                                part_error_msg = str(part_e)
+                                part_status_code = None
+                                if hasattr(part_e, 'status_code'):
+                                    part_status_code = part_e.status_code
+                                elif hasattr(part_e, 'response') and hasattr(part_e.response, 'status_code'):
+                                    part_status_code = part_e.response.status_code
+                                
+                                # Если все еще ошибка 413, разбиваем еще мельче
+                                if part_status_code == 413 or '413' in part_error_msg or 'Request too large' in part_error_msg or 'tokens per minute' in part_error_msg.lower() or 'TPM' in part_error_msg:
+                                    print(f"WARNING: Part {i+1} still too large, trying even smaller chunks")
+                                    # Разбиваем на очень маленькие части
+                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    tiny_parts = split_large_request(part, tiny_limit)
+                                    for j, tiny_part in enumerate(tiny_parts):
+                                        if j > 0:
+                                            yield f"\n\n--- Подчасть {i+1}.{j+1} ---\n\n"
+                                        try:
+                                            stream = self.client.chat.completions.create(
+                                                model="llama-3.3-70b-versatile",
+                                                messages=tiny_part,
+                                                temperature=temperature,
+                                                max_tokens=max_tokens,
+                                                stream=True
+                                            )
+                                            for chunk in stream:
+                                                if chunk.choices and len(chunk.choices) > 0:
+                                                    delta = chunk.choices[0].delta
+                                                    if delta and hasattr(delta, 'content') and delta.content:
+                                                        yield delta.content
+                                        except Exception as tiny_e:
+                                            raise ValueError(f"Groq API ошибка при обработке подчасти запроса: {str(tiny_e)}")
+                                else:
+                                    raise ValueError(f"Groq API ошибка при обработке части запроса: {part_error_msg}")
                         return
                 raise ValueError(f"Groq API ошибка: {error_msg}")
 
