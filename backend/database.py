@@ -2,7 +2,7 @@
 Database models and initialization for chat history
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -19,8 +19,8 @@ class Chat(Base):
     user_name = Column(String(200))  # User's first name
     username = Column(String(200))  # Telegram username
     provider = Column(String(50), default='openai')  # AI provider used
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationship to messages
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
@@ -49,7 +49,7 @@ class Message(Base):
     provider = Column(String(50))  # AI provider used for this message
     temperature = Column(String(10))  # Temperature setting
     max_tokens = Column(Integer)  # Max tokens setting
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationship to chat
     chat = relationship("Chat", back_populates="messages")
