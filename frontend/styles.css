@@ -23,24 +23,9 @@ body {
     margin: 0 auto;
 }
 
-/* Telegram Header Spacer - визуальное поле для кнопок Telegram Mini App */
+/* Telegram Header Spacer - скрыт */
 .telegram-header-spacer {
-    height: 44px;
-    background: var(--tg-theme-bg-color, #ffffff);
-    border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
-    position: sticky;
-    top: 0;
-    z-index: 101;
-    flex-shrink: 0;
-    /* Имитация панели Telegram с градиентом */
-    background: linear-gradient(
-        to bottom,
-        var(--tg-theme-bg-color, #ffffff) 0%,
-        var(--tg-theme-bg-color, #ffffff) 70%,
-        rgba(255, 255, 255, 0.95) 100%
-    );
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    display: none;
 }
 
 /* Header */
@@ -49,7 +34,7 @@ body {
     border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
     padding: 12px 16px;
     position: sticky;
-    top: 44px; /* Расположен под spacer'ом */
+    top: 0;
     z-index: 100;
     backdrop-filter: blur(10px);
     background: rgba(255, 255, 255, 0.9);
@@ -57,7 +42,7 @@ body {
 
 .header-content {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     max-width: 100%;
     margin: 0 auto;
@@ -71,10 +56,11 @@ body {
 }
 
 .app-title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 700;
     color: var(--tg-theme-text-color, #212121);
     margin: 0;
+    letter-spacing: 0.5px;
 }
 
 .provider-selector {
@@ -436,7 +422,7 @@ body {
     width: min(1742px, calc(100% - 32px));
     height: 235px;
     background: rgba(0, 0, 0, 0.001);
-    border-radius: 101px;
+    border-radius: 0;
     backdrop-filter: blur(40px) saturate(180%);
     -webkit-backdrop-filter: blur(40px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -663,7 +649,7 @@ body {
         width: calc(100% - 32px);
         height: auto;
         min-height: 180px;
-        border-radius: 60px;
+        border-radius: 0;
     }
     
     .input-wrapper {
@@ -703,7 +689,7 @@ body {
         width: calc(100% - 24px);
         height: auto;
         min-height: 160px;
-        border-radius: 50px;
+        border-radius: 0;
     }
     
     .input-wrapper {
