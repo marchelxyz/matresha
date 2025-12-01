@@ -588,13 +588,57 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullText = '';
+            let buffer = ''; // Буфер для неполных строк
             
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    // Обрабатываем оставшиеся данные в буфере
+                    if (buffer.trim()) {
+                        const lines = buffer.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') continue;
+                                
+                                try {
+                                    const json = JSON.parse(data);
+                                    if (json.content) {
+                                        fullText += json.content;
+                                        updateBotMessage(botMessageContainer, fullText);
+                                    } else if (json.error) {
+                                        // Обрабатываем ошибки от сервера
+                                        throw new Error(json.error);
+                                    }
+                                } catch (e) {
+                                    if (e instanceof SyntaxError) {
+                                        // Не JSON, может быть plain text
+                                        if (data.trim() && data !== '[DONE]') {
+                                            fullText += data;
+                                            updateBotMessage(botMessageContainer, fullText);
+                                        }
+                                    } else {
+                                        // Другая ошибка (например, от сервера)
+                                        throw e;
+                                    }
+                                }
+                            } else if (line.trim()) {
+                                // Plain text chunk
+                                fullText += line;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        }
+                    }
+                    break;
+                }
                 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                // Декодируем с учетом потока для правильной обработки UTF-8
+                buffer += decoder.decode(value, { stream: true });
+                
+                // Обрабатываем полные строки
+                const lines = buffer.split('\n');
+                // Последняя строка может быть неполной, оставляем её в буфере
+                buffer = lines.pop() || '';
                 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
@@ -606,14 +650,24 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
                             if (json.content) {
                                 fullText += json.content;
                                 updateBotMessage(botMessageContainer, fullText);
+                            } else if (json.error) {
+                                // Обрабатываем ошибки от сервера
+                                throw new Error(json.error);
                             }
                         } catch (e) {
-                            if (data.trim()) {
-                                fullText += data;
-                                updateBotMessage(botMessageContainer, fullText);
+                            if (e instanceof SyntaxError) {
+                                // Не JSON, может быть plain text
+                                if (data.trim() && data !== '[DONE]') {
+                                    fullText += data;
+                                    updateBotMessage(botMessageContainer, fullText);
+                                }
+                            } else {
+                                // Другая ошибка (например, от сервера)
+                                throw e;
                             }
                         }
                     } else if (line.trim()) {
+                        // Plain text chunk
                         fullText += line;
                         updateBotMessage(botMessageContainer, fullText);
                     }
@@ -707,13 +761,57 @@ async function streamAIResponse(userMessage, botMessageContainer) {
         if (response.body && typeof response.body.getReader === 'function') {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = ''; // Буфер для неполных строк
             
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    // Обрабатываем оставшиеся данные в буфере
+                    if (buffer.trim()) {
+                        const lines = buffer.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') continue;
+                                
+                                try {
+                                    const json = JSON.parse(data);
+                                    if (json.content) {
+                                        fullText += json.content;
+                                        updateBotMessage(botMessageContainer, fullText);
+                                    } else if (json.error) {
+                                        // Обрабатываем ошибки от сервера
+                                        throw new Error(json.error);
+                                    }
+                                } catch (e) {
+                                    if (e instanceof SyntaxError) {
+                                        // Не JSON, может быть plain text
+                                        if (data.trim() && data !== '[DONE]') {
+                                            fullText += data;
+                                            updateBotMessage(botMessageContainer, fullText);
+                                        }
+                                    } else {
+                                        // Другая ошибка (например, от сервера)
+                                        throw e;
+                                    }
+                                }
+                            } else if (line.trim()) {
+                                // Plain text chunk
+                                fullText += line;
+                                updateBotMessage(botMessageContainer, fullText);
+                            }
+                        }
+                    }
+                    break;
+                }
                 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                // Декодируем с учетом потока для правильной обработки UTF-8
+                buffer += decoder.decode(value, { stream: true });
+                
+                // Обрабатываем полные строки
+                const lines = buffer.split('\n');
+                // Последняя строка может быть неполной, оставляем её в буфере
+                buffer = lines.pop() || '';
                 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
@@ -725,12 +823,20 @@ async function streamAIResponse(userMessage, botMessageContainer) {
                             if (json.content) {
                                 fullText += json.content;
                                 updateBotMessage(botMessageContainer, fullText);
+                            } else if (json.error) {
+                                // Обрабатываем ошибки от сервера
+                                throw new Error(json.error);
                             }
                         } catch (e) {
-                            // Not JSON, might be plain text
-                            if (data.trim()) {
-                                fullText += data;
-                                updateBotMessage(botMessageContainer, fullText);
+                            if (e instanceof SyntaxError) {
+                                // Не JSON, может быть plain text
+                                if (data.trim() && data !== '[DONE]') {
+                                    fullText += data;
+                                    updateBotMessage(botMessageContainer, fullText);
+                                }
+                            } else {
+                                // Другая ошибка (например, от сервера)
+                                throw e;
                             }
                         }
                     } else if (line.trim()) {
