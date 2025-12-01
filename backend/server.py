@@ -534,6 +534,49 @@ def estimate_messages_tokens(messages):
     return total_tokens
 
 
+def extract_requested_tokens_from_error(error_msg):
+    """
+    Извлекает количество запрашиваемых токенов из сообщения об ошибке Groq API.
+    
+    Args:
+        error_msg: Строка с сообщением об ошибке
+        
+    Returns:
+        Количество запрашиваемых токенов или None, если не удалось извлечь
+    """
+    import re
+    # Ищем паттерн "Requested XXXXX" в сообщении об ошибке
+    # Пример: "Requested 18637"
+    match = re.search(r'Requested\s+(\d+)', error_msg, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def calculate_safe_limit_from_error(requested_tokens, max_limit=12000):
+    """
+    Вычисляет безопасный лимит токенов на основе запрошенного количества.
+    
+    Args:
+        requested_tokens: Количество запрашиваемых токенов
+        max_limit: Максимальный лимит TPM (по умолчанию 12000 для Groq on_demand)
+        
+    Returns:
+        Безопасный лимит токенов (обычно 70-80% от max_limit)
+    """
+    # Используем 70% от максимального лимита для безопасности
+    # Это оставляет место для ответа и overhead
+    safe_limit = int(max_limit * 0.7)
+    
+    # Если запрошенное количество больше максимального лимита,
+    # используем еще более консервативный подход
+    if requested_tokens and requested_tokens > max_limit:
+        # Разбиваем на части так, чтобы каждая часть была не больше 50% от лимита
+        safe_limit = int(max_limit * 0.5)
+    
+    return safe_limit
+
+
 def split_large_request(messages, max_tokens=10000):
     """
     Разбивает большой запрос на части, если он превышает лимит токенов.
@@ -695,8 +738,8 @@ class GroqProvider(AIProvider):
     # Лимит токенов для Groq on_demand tier
     MAX_TOKENS_LIMIT = 12000
     # Безопасный лимит с запасом (оставляем место для ответа)
-    # Очень консервативный подход - разбиваем запросы на маленькие части
-    SAFE_TOKENS_LIMIT = 1000  # Установлен в 1000 для максимальной безопасности
+    # Очень консервативный подход - используем 50% от максимального лимита для безопасности
+    SAFE_TOKENS_LIMIT = 6000  # 50% от 12000 для максимальной безопасности
     
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
@@ -728,7 +771,9 @@ class GroqProvider(AIProvider):
             message_list = [{"role": "user", "content": message}]
         
         # Проверяем размер запроса и разбиваем при необходимости
-        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+        # Используем более консервативный подход - 60% от максимального лимита для начального разбиения
+        initial_limit = int(self.MAX_TOKENS_LIMIT * 0.6)  # 60% от 12000 = 7200
+        request_parts = split_large_request(message_list, initial_limit)
         
         if len(request_parts) > 1:
             # Если запрос разбит на части, обрабатываем каждую часть отдельно
@@ -756,13 +801,29 @@ class GroqProvider(AIProvider):
                     # Если ошибка 413 (Request too large), пытаемся разбить еще мельче
                     if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
                         print(f"WARNING: Part {i+1} still too large ({error_msg}), trying smaller chunks")
-                        # Разбиваем эту часть еще мельче - используем более агрессивное разбиение
-                        smaller_limit = self.SAFE_TOKENS_LIMIT // 2  # Половина от безопасного лимита
+                        
+                        # Извлекаем точное количество запрашиваемых токенов из ошибки
+                        requested_tokens = extract_requested_tokens_from_error(error_msg)
+                        if requested_tokens:
+                            print(f"INFO: Extracted requested tokens from error: {requested_tokens}")
+                            # Вычисляем безопасный лимит на основе запрошенного количества
+                            smaller_limit = calculate_safe_limit_from_error(requested_tokens, self.MAX_TOKENS_LIMIT)
+                            print(f"INFO: Using calculated safe limit: {smaller_limit}")
+                        else:
+                            # Если не удалось извлечь, используем консервативный подход
+                            smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.4)  # 40% от максимального лимита
+                            print(f"INFO: Using conservative safe limit: {smaller_limit}")
+                        
                         smaller_parts = split_large_request(part, smaller_limit)
                         
                         # Если все еще одна часть, разбиваем еще мельче
                         if len(smaller_parts) == 1:
-                            smaller_limit = self.SAFE_TOKENS_LIMIT // 4  # Четверть от безопасного лимита
+                            # Используем еще более агрессивное разбиение
+                            if requested_tokens:
+                                smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.3)  # 30% от максимального лимита
+                            else:
+                                smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.25)  # 25% от максимального лимита
+                            print(f"INFO: Request still too large, using even smaller limit: {smaller_limit}")
                             smaller_parts = split_large_request(part, smaller_limit)
                         
                         for smaller_part in smaller_parts:
@@ -785,8 +846,20 @@ class GroqProvider(AIProvider):
                                 # Если все еще ошибка 413, разбиваем еще мельче
                                 if inner_status_code == 413 or '413' in inner_error_msg or 'Request too large' in inner_error_msg or 'tokens per minute' in inner_error_msg.lower() or 'TPM' in inner_error_msg:
                                     print(f"WARNING: Sub-part still too large, trying even smaller chunks")
-                                    # Разбиваем на очень маленькие части
-                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    
+                                    # Извлекаем точное количество токенов из ошибки подчасти
+                                    inner_requested_tokens = extract_requested_tokens_from_error(inner_error_msg)
+                                    if inner_requested_tokens:
+                                        print(f"INFO: Extracted requested tokens from sub-part error: {inner_requested_tokens}")
+                                        tiny_limit = calculate_safe_limit_from_error(inner_requested_tokens, self.MAX_TOKENS_LIMIT)
+                                        # Если все еще слишком много, используем еще более консервативный подход
+                                        if inner_requested_tokens > self.MAX_TOKENS_LIMIT * 0.5:
+                                            tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    else:
+                                        # Используем очень консервативный подход
+                                        tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    
+                                    print(f"INFO: Using tiny limit: {tiny_limit}")
                                     tiny_parts = split_large_request(smaller_part, tiny_limit)
                                     for tiny_part in tiny_parts:
                                         try:
@@ -829,13 +902,29 @@ class GroqProvider(AIProvider):
                 # Если ошибка 413, пытаемся разбить запрос
                 if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
                     print(f"INFO: Request too large ({error_msg}), splitting into smaller parts")
-                    # Используем более агрессивное разбиение
-                    request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+                    
+                    # Извлекаем точное количество запрашиваемых токенов из ошибки
+                    requested_tokens = extract_requested_tokens_from_error(error_msg)
+                    if requested_tokens:
+                        print(f"INFO: Extracted requested tokens from error: {requested_tokens}")
+                        # Вычисляем безопасный лимит на основе запрошенного количества
+                        safe_limit = calculate_safe_limit_from_error(requested_tokens, self.MAX_TOKENS_LIMIT)
+                        print(f"INFO: Using calculated safe limit: {safe_limit}")
+                    else:
+                        # Если не удалось извлечь, используем консервативный подход
+                        safe_limit = int(self.MAX_TOKENS_LIMIT * 0.5)  # 50% от максимального лимита
+                        print(f"INFO: Using conservative safe limit: {safe_limit}")
+                    
+                    request_parts = split_large_request(message_list, safe_limit)
                     
                     # Если все еще одна часть, разбиваем еще мельче
                     if len(request_parts) == 1:
                         print(f"INFO: Request still too large after first split, trying smaller limit")
-                        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT // 2)
+                        if requested_tokens:
+                            safe_limit = int(self.MAX_TOKENS_LIMIT * 0.3)  # 30% от максимального лимита
+                        else:
+                            safe_limit = int(self.MAX_TOKENS_LIMIT * 0.25)  # 25% от максимального лимита
+                        request_parts = split_large_request(message_list, safe_limit)
                     
                     if len(request_parts) > 1:
                         # Рекурсивно обрабатываем разбитые части
@@ -853,7 +942,9 @@ class GroqProvider(AIProvider):
             message_list = [{"role": "user", "content": message}]
         
         # Проверяем размер запроса и разбиваем при необходимости
-        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+        # Используем более консервативный подход - 60% от максимального лимита для начального разбиения
+        initial_limit = int(self.MAX_TOKENS_LIMIT * 0.6)  # 60% от 12000 = 7200
+        request_parts = split_large_request(message_list, initial_limit)
         
         if len(request_parts) > 1:
             # Если запрос разбит на части, обрабатываем каждую часть отдельно
@@ -891,13 +982,29 @@ class GroqProvider(AIProvider):
                     # Если ошибка 413 (Request too large), пытаемся разбить еще мельче
                     if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
                         print(f"WARNING: Part {i+1} still too large ({error_msg}), trying smaller chunks")
-                        # Разбиваем эту часть еще мельче - используем более агрессивное разбиение
-                        smaller_limit = self.SAFE_TOKENS_LIMIT // 2  # Половина от безопасного лимита
+                        
+                        # Извлекаем точное количество запрашиваемых токенов из ошибки
+                        requested_tokens = extract_requested_tokens_from_error(error_msg)
+                        if requested_tokens:
+                            print(f"INFO: Extracted requested tokens from error: {requested_tokens}")
+                            # Вычисляем безопасный лимит на основе запрошенного количества
+                            smaller_limit = calculate_safe_limit_from_error(requested_tokens, self.MAX_TOKENS_LIMIT)
+                            print(f"INFO: Using calculated safe limit: {smaller_limit}")
+                        else:
+                            # Если не удалось извлечь, используем консервативный подход
+                            smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.4)  # 40% от максимального лимита
+                            print(f"INFO: Using conservative safe limit: {smaller_limit}")
+                        
                         smaller_parts = split_large_request(part, smaller_limit)
                         
                         # Если все еще одна часть, разбиваем еще мельче
                         if len(smaller_parts) == 1:
-                            smaller_limit = self.SAFE_TOKENS_LIMIT // 4  # Четверть от безопасного лимита
+                            # Используем еще более агрессивное разбиение
+                            if requested_tokens:
+                                smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.3)  # 30% от максимального лимита
+                            else:
+                                smaller_limit = int(self.MAX_TOKENS_LIMIT * 0.25)  # 25% от максимального лимита
+                            print(f"INFO: Request still too large, using even smaller limit: {smaller_limit}")
                             smaller_parts = split_large_request(part, smaller_limit)
                         
                         for j, smaller_part in enumerate(smaller_parts):
@@ -927,8 +1034,20 @@ class GroqProvider(AIProvider):
                                 # Если все еще ошибка 413, разбиваем еще мельче
                                 if inner_status_code == 413 or '413' in inner_error_msg or 'Request too large' in inner_error_msg or 'tokens per minute' in inner_error_msg.lower() or 'TPM' in inner_error_msg:
                                     print(f"WARNING: Sub-part {i+1}.{j+1} still too large, trying even smaller chunks")
-                                    # Разбиваем на очень маленькие части
-                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    
+                                    # Извлекаем точное количество токенов из ошибки подчасти
+                                    inner_requested_tokens = extract_requested_tokens_from_error(inner_error_msg)
+                                    if inner_requested_tokens:
+                                        print(f"INFO: Extracted requested tokens from sub-part error: {inner_requested_tokens}")
+                                        tiny_limit = calculate_safe_limit_from_error(inner_requested_tokens, self.MAX_TOKENS_LIMIT)
+                                        # Если все еще слишком много, используем еще более консервативный подход
+                                        if inner_requested_tokens > self.MAX_TOKENS_LIMIT * 0.5:
+                                            tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    else:
+                                        # Используем очень консервативный подход
+                                        tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    
+                                    print(f"INFO: Using tiny limit: {tiny_limit}")
                                     tiny_parts = split_large_request(smaller_part, tiny_limit)
                                     for k, tiny_part in enumerate(tiny_parts):
                                         if k > 0:
@@ -947,7 +1066,53 @@ class GroqProvider(AIProvider):
                                                     if delta and hasattr(delta, 'content') and delta.content:
                                                         yield delta.content
                                         except Exception as tiny_e:
-                                            raise ValueError(f"Groq API ошибка при обработке микрочасти запроса: {str(tiny_e)}")
+                                            tiny_error_msg = str(tiny_e)
+                                            tiny_status_code = None
+                                            if hasattr(tiny_e, 'status_code'):
+                                                tiny_status_code = tiny_e.status_code
+                                            elif hasattr(tiny_e, 'response') and hasattr(tiny_e.response, 'status_code'):
+                                                tiny_status_code = tiny_e.response.status_code
+                                            
+                                            # Если все еще ошибка 413, пытаемся разбить на еще более мелкие части
+                                            if tiny_status_code == 413 or '413' in tiny_error_msg or 'Request too large' in tiny_error_msg or 'tokens per minute' in tiny_error_msg.lower() or 'TPM' in tiny_error_msg:
+                                                print(f"WARNING: Micro-part {i+1}.{j+1}.{k+1} still too large, trying ultra-small chunks")
+                                                
+                                                # Извлекаем точное количество токенов из ошибки микрочасти
+                                                tiny_requested_tokens = extract_requested_tokens_from_error(tiny_error_msg)
+                                                if tiny_requested_tokens:
+                                                    print(f"INFO: Extracted requested tokens from micro-part error: {tiny_requested_tokens}")
+                                                    ultra_limit = calculate_safe_limit_from_error(tiny_requested_tokens, self.MAX_TOKENS_LIMIT)
+                                                    # Используем очень консервативный подход - 15% от максимального лимита
+                                                    if tiny_requested_tokens > self.MAX_TOKENS_LIMIT * 0.3:
+                                                        ultra_limit = int(self.MAX_TOKENS_LIMIT * 0.15)  # 15% от максимального лимита
+                                                else:
+                                                    # Используем очень консервативный подход
+                                                    ultra_limit = int(self.MAX_TOKENS_LIMIT * 0.15)  # 15% от максимального лимита
+                                                
+                                                print(f"INFO: Using ultra limit: {ultra_limit}")
+                                                ultra_parts = split_large_request(tiny_part, ultra_limit)
+                                                
+                                                for l, ultra_part in enumerate(ultra_parts):
+                                                    if l > 0:
+                                                        yield f"\n\n--- Ультра-часть {i+1}.{j+1}.{k+1}.{l+1} ---\n\n"
+                                                    try:
+                                                        stream = self.client.chat.completions.create(
+                                                            model="llama-3.3-70b-versatile",
+                                                            messages=ultra_part,
+                                                            temperature=temperature,
+                                                            max_tokens=max_tokens,
+                                                            stream=True
+                                                        )
+                                                        for chunk in stream:
+                                                            if chunk.choices and len(chunk.choices) > 0:
+                                                                delta = chunk.choices[0].delta
+                                                                if delta and hasattr(delta, 'content') and delta.content:
+                                                                    yield delta.content
+                                                    except Exception as ultra_e:
+                                                        # Если даже ультра-часть не работает, выдаем ошибку
+                                                        raise ValueError(f"Groq API ошибка при обработке ультра-части запроса: {str(ultra_e)}")
+                                            else:
+                                                raise ValueError(f"Groq API ошибка при обработке микрочасти запроса: {tiny_error_msg}")
                                 else:
                                     raise ValueError(f"Groq API ошибка при обработке части запроса: {inner_error_msg}")
                     else:
@@ -981,13 +1146,29 @@ class GroqProvider(AIProvider):
                 # Если ошибка 413, пытаемся разбить запрос
                 if status_code == 413 or '413' in error_msg or 'Request too large' in error_msg or 'tokens per minute' in error_msg.lower() or 'TPM' in error_msg:
                     print(f"INFO: Request too large ({error_msg}), splitting into smaller parts")
-                    # Используем более агрессивное разбиение
-                    request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT)
+                    
+                    # Извлекаем точное количество запрашиваемых токенов из ошибки
+                    requested_tokens = extract_requested_tokens_from_error(error_msg)
+                    if requested_tokens:
+                        print(f"INFO: Extracted requested tokens from error: {requested_tokens}")
+                        # Вычисляем безопасный лимит на основе запрошенного количества
+                        safe_limit = calculate_safe_limit_from_error(requested_tokens, self.MAX_TOKENS_LIMIT)
+                        print(f"INFO: Using calculated safe limit: {safe_limit}")
+                    else:
+                        # Если не удалось извлечь, используем консервативный подход
+                        safe_limit = int(self.MAX_TOKENS_LIMIT * 0.5)  # 50% от максимального лимита
+                        print(f"INFO: Using conservative safe limit: {safe_limit}")
+                    
+                    request_parts = split_large_request(message_list, safe_limit)
                     
                     # Если все еще одна часть, разбиваем еще мельче
                     if len(request_parts) == 1:
                         print(f"INFO: Request still too large after first split, trying smaller limit")
-                        request_parts = split_large_request(message_list, self.SAFE_TOKENS_LIMIT // 2)
+                        if requested_tokens:
+                            safe_limit = int(self.MAX_TOKENS_LIMIT * 0.3)  # 30% от максимального лимита
+                        else:
+                            safe_limit = int(self.MAX_TOKENS_LIMIT * 0.25)  # 25% от максимального лимита
+                        request_parts = split_large_request(message_list, safe_limit)
                     
                     if len(request_parts) > 1:
                         # Обрабатываем каждую часть отдельно
@@ -1018,8 +1199,18 @@ class GroqProvider(AIProvider):
                                 # Если все еще ошибка 413, разбиваем еще мельче
                                 if part_status_code == 413 or '413' in part_error_msg or 'Request too large' in part_error_msg or 'tokens per minute' in part_error_msg.lower() or 'TPM' in part_error_msg:
                                     print(f"WARNING: Part {i+1} still too large, trying even smaller chunks")
-                                    # Разбиваем на очень маленькие части
-                                    tiny_limit = self.SAFE_TOKENS_LIMIT // 4
+                                    
+                                    # Извлекаем точное количество токенов из ошибки части
+                                    part_requested_tokens = extract_requested_tokens_from_error(part_error_msg)
+                                    if part_requested_tokens:
+                                        print(f"INFO: Extracted requested tokens from part error: {part_requested_tokens}")
+                                        tiny_limit = calculate_safe_limit_from_error(part_requested_tokens, self.MAX_TOKENS_LIMIT)
+                                        if part_requested_tokens > self.MAX_TOKENS_LIMIT * 0.5:
+                                            tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    else:
+                                        tiny_limit = int(self.MAX_TOKENS_LIMIT * 0.2)  # 20% от максимального лимита
+                                    
+                                    print(f"INFO: Using tiny limit: {tiny_limit}")
                                     tiny_parts = split_large_request(part, tiny_limit)
                                     for j, tiny_part in enumerate(tiny_parts):
                                         if j > 0:
