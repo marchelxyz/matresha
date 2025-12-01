@@ -1591,7 +1591,9 @@ def chat_stream():
         
         def generate():
             full_response = ""
+            chunk_count = 0
             try:
+                print(f"DEBUG: Starting stream for provider {provider_name}, message length: {len(message)}")
                 for chunk in provider.stream(
                     message,
                     temperature=temperature,
@@ -1599,8 +1601,16 @@ def chat_stream():
                     messages=messages_history if messages_history else None
                 ):
                     if chunk:  # Проверяем, что chunk не пустой
+                        chunk_count += 1
                         full_response += chunk
-                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        try:
+                            yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        except Exception as yield_error:
+                            print(f"ERROR: Failed to yield chunk {chunk_count}: {str(yield_error)}")
+                            # Продолжаем обработку даже если не удалось отправить один чанк
+                            continue
+                
+                print(f"DEBUG: Stream completed. Total chunks: {chunk_count}, total length: {len(full_response)}")
                 
                 # Save assistant response to database
                 if chat_id and user_id and full_response:
@@ -1618,13 +1628,26 @@ def chat_stream():
                 # Send user-friendly error message (already formatted by provider)
                 yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
                 yield "data: [DONE]\n\n"
+            except GeneratorExit:
+                # Клиент закрыл соединение, это нормально
+                print(f"DEBUG: Client closed connection. Processed {chunk_count} chunks, total length: {len(full_response)}")
+                raise
             except Exception as e:
                 # Log the full error for debugging
                 error_msg = str(e)
                 error_type = type(e).__name__
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                print(f"DEBUG: Processed {chunk_count} chunks before error, total length: {len(full_response)}")
                 import traceback
                 traceback.print_exc()
+                
+                # Если уже была отправлена часть ответа, сохраняем её
+                if chat_id and user_id and full_response:
+                    try:
+                        save_message(chat_id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    except Exception as db_error:
+                        print(f"WARNING: Failed to save partial message to database: {str(db_error)}")
+                
                 # Provide user-friendly message for quota/balance errors
                 if 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or '402' in error_msg:
                     user_msg = "DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com"
@@ -1635,8 +1658,14 @@ def chat_stream():
                     user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
                 else:
                     user_msg = f"Ошибка при генерации ответа: {error_msg}"
-                yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
-                yield "data: [DONE]\n\n"
+                
+                try:
+                    yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as yield_error:
+                    print(f"ERROR: Failed to yield error message: {str(yield_error)}")
+                    # Если не удалось отправить ошибку, просто завершаем
+                    pass
         
         return Response(
             stream_with_context(generate()),
@@ -2010,7 +2039,9 @@ def chat_with_files():
         
         def generate():
             full_response = ""
+            chunk_count = 0
             try:
+                print(f"DEBUG: Starting stream with files for provider {provider_name}, message length: {len(full_message)}")
                 for chunk in provider.stream(
                     full_message,
                     temperature=temperature,
@@ -2018,8 +2049,16 @@ def chat_with_files():
                     messages=messages_history if messages_history else None
                 ):
                     if chunk:
+                        chunk_count += 1
                         full_response += chunk
-                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        try:
+                            yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        except Exception as yield_error:
+                            print(f"ERROR: Failed to yield chunk {chunk_count}: {str(yield_error)}")
+                            # Продолжаем обработку даже если не удалось отправить один чанк
+                            continue
+                
+                print(f"DEBUG: Stream with files completed. Total chunks: {chunk_count}, total length: {len(full_response)}")
                 
                 # Save assistant response to database
                 if chat_id and user_id and full_response:
@@ -2037,12 +2076,25 @@ def chat_with_files():
                 # Send user-friendly error message (already formatted by provider)
                 yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
                 yield "data: [DONE]\n\n"
+            except GeneratorExit:
+                # Клиент закрыл соединение, это нормально
+                print(f"DEBUG: Client closed connection. Processed {chunk_count} chunks, total length: {len(full_response)}")
+                raise
             except Exception as e:
                 error_msg = str(e)
                 error_type = type(e).__name__
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
+                print(f"DEBUG: Processed {chunk_count} chunks before error, total length: {len(full_response)}")
                 import traceback
                 traceback.print_exc()
+                
+                # Если уже была отправлена часть ответа, сохраняем её
+                if chat_id and user_id and full_response:
+                    try:
+                        save_message(chat_id, "assistant", full_response, provider_name, temperature, max_tokens)
+                    except Exception as db_error:
+                        print(f"WARNING: Failed to save partial message to database: {str(db_error)}")
+                
                 # Provide user-friendly message for quota/balance errors
                 if 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or '402' in error_msg:
                     user_msg = "DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com"
@@ -2053,8 +2105,14 @@ def chat_with_files():
                     user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
                 else:
                     user_msg = f"Ошибка при генерации ответа: {error_msg}"
-                yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
-                yield "data: [DONE]\n\n"
+                
+                try:
+                    yield f"data: {json.dumps({'error': user_msg, 'type': error_type, 'details': error_msg})}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as yield_error:
+                    print(f"ERROR: Failed to yield error message: {str(yield_error)}")
+                    # Если не удалось отправить ошибку, просто завершаем
+                    pass
         
         return Response(
             stream_with_context(generate()),
