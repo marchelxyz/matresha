@@ -36,17 +36,78 @@ class MarkdownParser {
             // Horizontal rule
             { pattern: /^---$/gm, replacement: '<hr />' },
             
+            // Tables (must be processed before line breaks)
+            { pattern: /^\|(.+)\|$/gm, replacement: (match, content) => {
+                // This will be processed separately
+                return match;
+            }},
+            
             // Line breaks
             { pattern: /\n\n/g, replacement: '</p><p>' },
             { pattern: /\n/g, replacement: '<br />' },
         ];
     }
     
+    // Parse markdown tables
+    parseTables(text) {
+        // Match table blocks (with header separator)
+        // Pattern matches: header row, separator row (with dashes), and data rows
+        const tablePattern = /(\|[^\n]+\|\s*\n\|[\s\-:|]+\|\s*\n(?:\|[^\n]+\|\s*\n?)+)/g;
+        
+        return text.replace(tablePattern, (match) => {
+            const lines = match.trim().split('\n').map(l => l.trim()).filter(l => l);
+            if (lines.length < 2) return match;
+            
+            // Parse header
+            const headerLine = lines[0];
+            const headers = headerLine.split('|').map(h => h.trim()).filter(h => h);
+            
+            if (headers.length === 0) return match;
+            
+            // Skip separator line (second line)
+            const dataLines = lines.slice(2);
+            
+            let html = '<div class="table-wrapper"><table><thead><tr>';
+            headers.forEach(header => {
+                html += `<th>${this.parseInline(header)}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            
+            // Parse data rows
+            dataLines.forEach(line => {
+                if (!line.trim() || !line.includes('|')) return;
+                const cells = line.split('|').map(c => c.trim()).filter(c => c);
+                if (cells.length === 0) return;
+                
+                // Ensure we have the same number of cells as headers
+                while (cells.length < headers.length) {
+                    cells.push('');
+                }
+                if (cells.length > headers.length) {
+                    cells = cells.slice(0, headers.length);
+                }
+                
+                html += '<tr>';
+                cells.forEach(cell => {
+                    html += `<td>${this.parseInline(cell)}</td>`;
+                });
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table><button class="copy-table-btn" onclick="copyTableToClipboard(this)" title="Копировать таблицу">📋</button></div>';
+            
+            return html;
+        });
+    }
+    
     parse(text) {
         if (!text) return '';
         
+        // First, parse tables (before wrapping in paragraphs)
+        let html = this.parseTables(text);
+        
         // Wrap in paragraph tags
-        let html = '<p>' + text + '</p>';
+        html = '<p>' + html + '</p>';
         
         // Apply rules
         for (const rule of this.rules) {
@@ -69,6 +130,8 @@ class MarkdownParser {
         html = html.replace(/(<\/pre>)<\/p>/g, '$1');
         html = html.replace(/<p>(<blockquote>)/g, '$1');
         html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+        html = html.replace(/<p>(<div class="table-wrapper">)/g, '$1');
+        html = html.replace(/(<\/div>)<\/p>/g, '$1');
         
         return html;
     }

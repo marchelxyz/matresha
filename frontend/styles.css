@@ -272,22 +272,99 @@ body {
     color: var(--tg-theme-hint-color, #666);
 }
 
+.table-wrapper {
+    position: relative;
+    margin: 12px 0;
+    overflow-x: auto;
+    border-radius: 8px;
+    background: var(--tg-theme-bg-color, #ffffff);
+    border: 1px solid var(--tg-theme-hint-color, #e5e5e5);
+}
+
 .message-text table {
     width: 100%;
     border-collapse: collapse;
-    margin: 8px 0;
+    margin: 0;
+    min-width: 300px;
 }
 
 .message-text table th,
 .message-text table td {
     border: 1px solid var(--tg-theme-hint-color, #e5e5e5);
-    padding: 8px;
+    padding: 10px 12px;
     text-align: left;
+    font-size: 14px;
 }
 
 .message-text table th {
     background: var(--tg-theme-secondary-bg-color, #f5f5f5);
     font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.message-text table tbody tr:hover {
+    background: var(--tg-theme-secondary-bg-color, #f9f9f9);
+}
+
+.message-text table tbody tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.copy-table-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--tg-theme-button-color, #007bff);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+}
+
+.copy-table-btn:hover {
+    background: var(--tg-theme-button-color, #0056b3);
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.copy-table-btn:active {
+    transform: scale(0.95);
+}
+
+.user-message .table-wrapper {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.user-message .table-wrapper table th {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.user-message .table-wrapper table th,
+.user-message .table-wrapper table td {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.user-message .table-wrapper table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.user-message .table-wrapper table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .typing-indicator {
