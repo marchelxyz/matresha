@@ -35,7 +35,7 @@ const providers = {
 };
 
 // Initialize the app
-function initApp() {
+async function initApp() {
     // Initialize markdown parser
     markdownParser = new MarkdownParser();
     
@@ -55,6 +55,9 @@ function initApp() {
     
     // Update UI
     updateProviderInfo();
+    
+    // Load chat history
+    await loadChatHistory();
 }
 
 // Setup event listeners
@@ -418,6 +421,98 @@ function scrollToBottom() {
     requestAnimationFrame(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
+}
+
+// Load chat history from server
+async function loadChatHistory() {
+    try {
+        const user = tg.initDataUnsafe?.user;
+        if (!user || !user.id) {
+            console.log('No user ID available, skipping history load');
+            return;
+        }
+        
+        // Get user's most recent chat
+        const result = await api.getChatHistory(user.id);
+        
+        if (result.success && result.data) {
+            // If we have a specific chat with messages, load them
+            if (result.data.messages && result.data.messages.length > 0) {
+                // Clear existing messages (if any)
+                chatMessages.innerHTML = '';
+                
+                // Load messages from history
+                result.data.messages.forEach(msg => {
+                    if (msg.role === 'user' || msg.role === 'assistant') {
+                        addMessageFromHistory(msg.content, msg.role);
+                    }
+                });
+                
+                scrollToBottom();
+                console.log(`Loaded ${result.data.messages.length} messages from history`);
+            } else if (result.data.chats && result.data.chats.length > 0) {
+                // If we have chats but no messages, load the most recent chat's messages
+                const mostRecentChat = result.data.chats[0];
+                if (mostRecentChat.id) {
+                    const messagesResult = await api.getChatMessages(mostRecentChat.id);
+                    if (messagesResult.success && messagesResult.data.messages) {
+                        chatMessages.innerHTML = '';
+                        messagesResult.data.messages.forEach(msg => {
+                            if (msg.role === 'user' || msg.role === 'assistant') {
+                                addMessageFromHistory(msg.content, msg.role);
+                            }
+                        });
+                        scrollToBottom();
+                        console.log(`Loaded ${messagesResult.data.messages.length} messages from chat ${mostRecentChat.id}`);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load chat history:', error);
+        // Don't show error to user, just log it
+    }
+}
+
+// Add message from history (without sending to API)
+function addMessageFromHistory(text, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    if (sender === 'user') {
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        const user = tg.initDataUnsafe?.user;
+        avatarDiv.textContent = user?.first_name?.[0] || 'U';
+        messageDiv.appendChild(avatarDiv);
+    } else {
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        avatarDiv.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
+            </svg>
+        `;
+        messageDiv.appendChild(avatarDiv);
+    }
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
+    const textDiv = document.createElement('div');
+    textDiv.className = 'message-text';
+    
+    // Parse markdown for assistant messages
+    if (sender === 'assistant' && markdownParser) {
+        textDiv.innerHTML = markdownParser.parse(text);
+    } else {
+        textDiv.textContent = text;
+    }
+    
+    contentDiv.appendChild(textDiv);
+    messageDiv.appendChild(contentDiv);
+    
+    chatMessages.appendChild(messageDiv);
 }
 
 // Initialize app when DOM is loaded
