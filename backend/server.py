@@ -695,8 +695,8 @@ class GroqProvider(AIProvider):
     # Лимит токенов для Groq on_demand tier
     MAX_TOKENS_LIMIT = 12000
     # Безопасный лимит с запасом (оставляем место для ответа)
-    # Уменьшаем лимит для более консервативного подхода
-    SAFE_TOKENS_LIMIT = 8000  # Было 10000, уменьшаем до 8000 для безопасности
+    # Очень консервативный подход - разбиваем запросы на маленькие части
+    SAFE_TOKENS_LIMIT = 1000  # Установлен в 1000 для максимальной безопасности
     
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('GROQ_API_KEY'))
