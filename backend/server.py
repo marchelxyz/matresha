@@ -661,8 +661,11 @@ class DeepSeekProvider(AIProvider):
             error_msg = str(e)
             error_type = type(e).__name__
             
+            # Проверяем код ошибки 402 и сообщение "Insufficient Balance"
+            if '402' in error_msg or 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower():
+                raise ValueError("DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com")
             # Handle API errors
-            if error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+            elif error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
                 raise ValueError("DeepSeek API: Неверный API ключ или ключ не настроен")
             elif 'rate limit' in error_msg.lower():
                 raise ValueError("DeepSeek API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
@@ -699,8 +702,11 @@ class DeepSeekProvider(AIProvider):
             error_msg = str(e)
             error_type = type(e).__name__
             
+            # Проверяем код ошибки 402 и сообщение "Insufficient Balance"
+            if '402' in error_msg or 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower():
+                raise ValueError("DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com")
             # Handle API errors
-            if error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
+            elif error_type == 'AuthenticationError' or 'api key' in error_msg.lower():
                 raise ValueError("DeepSeek API: Неверный API ключ или ключ не настроен")
             elif 'rate limit' in error_msg.lower():
                 raise ValueError("DeepSeek API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
@@ -1126,7 +1132,7 @@ def chat_stream():
                 error_msg = str(e)
                 error_type = type(e).__name__
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
-                # Send user-friendly error message
+                # Send user-friendly error message (already formatted by provider)
                 yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
@@ -1136,8 +1142,10 @@ def chat_stream():
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                # Provide user-friendly message for quota errors
-                if 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
+                # Provide user-friendly message for quota/balance errors
+                if 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or '402' in error_msg:
+                    user_msg = "DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com"
+                elif 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
                     user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
                 else:
                     user_msg = f"Ошибка при генерации ответа: {error_msg}"
@@ -1540,7 +1548,7 @@ def chat_with_files():
                 error_msg = str(e)
                 error_type = type(e).__name__
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
-                # Send user-friendly error message
+                # Send user-friendly error message (already formatted by provider)
                 yield f"data: {json.dumps({'error': error_msg, 'type': error_type})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
@@ -1549,8 +1557,10 @@ def chat_with_files():
                 print(f"ERROR: Stream generation failed - {error_type}: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                # Provide user-friendly message for quota errors
-                if 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
+                # Provide user-friendly message for quota/balance errors
+                if 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or '402' in error_msg:
+                    user_msg = "DeepSeek API: Недостаточно средств на балансе. Пожалуйста, пополните ваш аккаунт на https://platform.deepseek.com"
+                elif 'quota' in error_msg.lower() or 'insufficient_quota' in error_msg.lower() or error_type == 'RateLimitError':
                     user_msg = "Превышена квота использования API. Пожалуйста, проверьте ваш план и настройки биллинга."
                 else:
                     user_msg = f"Ошибка при генерации ответа: {error_msg}"
