@@ -4,10 +4,10 @@ const TelegramConfig = {
     BOT_TOKEN: 'YOUR_BOT_TOKEN_HERE',
     
     // Web App URL
-    WEB_APP_URL: 'https://your-domain.com',
+    WEB_APP_URL: 'https://matresha.vercel.app',
     
     // API endpoints
-    API_BASE_URL: 'https://your-api-domain.com/api',
+    API_BASE_URL: 'https://matresha-production.up.railway.app/api',
     
     // Features configuration
     FEATURES: {
