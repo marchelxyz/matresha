@@ -36,7 +36,8 @@ const providers = {
     gemini: { name: 'Gemini 1.5', model: 'gemini-1.5-flash' },
     claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
     groq: { name: 'Llama 3.3', model: 'llama-3.3-70b-versatile' },
-    mistral: { name: 'Mistral Large', model: 'mistral-large-latest' }
+    mistral: { name: 'Mistral Large', model: 'mistral-large-latest' },
+    deepseek: { name: 'DeepSeek Chat', model: 'deepseek-chat' }
 };
 
 // Convert hex color to RGB
@@ -741,7 +742,8 @@ async function simulateStreamingResponse(userMessage, botMessageContainer) {
         gemini: `Я - Gemini 1.5 от Google. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Gemini необходимо настроить ключ API на сервере.\n\n**Возможности Gemini 1.5:**\n• Мультимодальность\n• Быстрые ответы\n• Понимание изображений\n• Поддержка длинного контекста\n• Интеграция с Google сервисами`,
         claude: `Я - Claude 3 от Anthropic. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Claude необходимо настроить ключ API на сервере.\n\n**Возможности Claude:**\n• Работа с длинными текстами\n• Безопасность и этика\n• Точный анализ\n• Контекстное понимание`,
         groq: `Я - Llama 3 от Groq. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Groq необходимо настроить ключ API на сервере.\n\n**Возможности Llama 3:**\n• Очень быстрые ответы\n• Эффективность\n• Открытая модель\n• Низкая задержка`,
-        mistral: `Я - Mistral Large. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Mistral необходимо настроить ключ API на сервере.\n\n**Возможности Mistral:**\n• Многоязычность\n• Эффективность\n• Качественные ответы\n• Европейская разработка`
+        mistral: `Я - Mistral Large. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Mistral необходимо настроить ключ API на сервере.\n\n**Возможности Mistral:**\n• Многоязычность\n• Эффективность\n• Качественные ответы\n• Европейская разработка`,
+        deepseek: `Я - DeepSeek Chat. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API DeepSeek необходимо настроить ключ API на сервере.\n\n**Возможности DeepSeek:**\n• Высокая производительность\n• Эффективность\n• Качественные ответы\n• Поддержка длинного контекста`
     };
     
     const responseText = responses[currentProvider] || responses.openai;
