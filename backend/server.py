@@ -457,27 +457,15 @@ class ClaudeProvider(AIProvider):
         
         try:
             from anthropic import Anthropic
-            # Try standard initialization first
-            self.client = Anthropic(api_key=self.api_key)
-        except ImportError:
-            print("ERROR: anthropic library not installed. Install with: pip install anthropic")
-            self.client = None
-        except (TypeError, AttributeError) as e:
-            # Handle TypeError/AttributeError which may occur due to version incompatibility
-            error_msg = str(e)
-            if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
-                print(f"ERROR: Anthropic client initialization error - {error_msg}")
-                print("INFO: This may be due to a version incompatibility. Trying alternative method...")
-                try:
-                    # Try with explicit httpx client to avoid proxies issue
-                    import httpx
-                    http_client = httpx.Client(timeout=60.0)
-                    self.client = Anthropic(
-                        api_key=self.api_key,
-                        http_client=http_client
-                    )
-                except Exception as e2:
-                    print(f"ERROR: Alternative initialization with http_client failed: {str(e2)}")
+            
+            # Try standard initialization first (without http_client to avoid proxies issue)
+            try:
+                self.client = Anthropic(api_key=self.api_key)
+            except (TypeError, AttributeError, ValueError) as e:
+                error_msg = str(e)
+                if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
+                    print(f"ERROR: Anthropic client initialization error - {error_msg}")
+                    print("INFO: This may be due to a version incompatibility. Trying alternative method...")
                     # Try using environment variable instead
                     try:
                         import os as anthropic_os
@@ -489,10 +477,25 @@ class ClaudeProvider(AIProvider):
                         elif 'ANTHROPIC_API_KEY' in anthropic_os.environ:
                             del anthropic_os.environ['ANTHROPIC_API_KEY']
                     except Exception as e3:
-                        print(f"ERROR: All initialization methods failed: {str(e3)}")
-                        self.client = None
-            else:
-                raise
+                        print(f"ERROR: Alternative initialization failed: {str(e3)}")
+                        # Try with explicit httpx client (but catch proxies error)
+                        try:
+                            import httpx
+                            # Create httpx client without proxies parameter
+                            http_client = httpx.Client(timeout=60.0)
+                            self.client = Anthropic(
+                                api_key=self.api_key,
+                                http_client=http_client
+                            )
+                        except Exception as e4:
+                            print(f"ERROR: All initialization methods failed: {str(e4)}")
+                            self.client = None
+                else:
+                    # Re-raise if it's not a proxies-related error
+                    raise
+        except ImportError:
+            print("ERROR: anthropic library not installed. Install with: pip install anthropic")
+            self.client = None
         except Exception as e:
             print(f"ERROR: Failed to initialize Anthropic client: {str(e)}")
             self.client = None
@@ -507,14 +510,62 @@ class ClaudeProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        response = self.client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=message_list
-        )
+        # Use Claude Sonnet 4.5 model (newer and more capable)
+        # Fallback to Claude 3 Opus if Sonnet 4.5 is not available
+        model = kwargs.get('model', "claude-sonnet-4-5-20250929")
         
-        return response.content[0].text
+        # Support for tools and beta features
+        tools = kwargs.get('tools', None)
+        betas = kwargs.get('betas', None)
+        
+        # Prepare request parameters
+        request_params = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": message_list
+        }
+        
+        # Add tools and betas if provided (for beta API)
+        if tools:
+            request_params["tools"] = tools
+        if betas:
+            request_params["betas"] = betas
+        
+        try:
+            # Try beta API if tools or betas are provided
+            if tools or betas:
+                response = self.client.beta.messages.create(**request_params)
+            else:
+                response = self.client.messages.create(**request_params)
+        except Exception as e:
+            # If Sonnet 4.5 fails, try with Claude 3 Opus
+            if "claude-sonnet-4-5" in model.lower():
+                print(f"INFO: Claude Sonnet 4.5 not available, falling back to Claude 3 Opus")
+                request_params["model"] = "claude-3-opus-20240229"
+                # Remove betas for older model
+                if "betas" in request_params:
+                    del request_params["betas"]
+                if "tools" in request_params:
+                    del request_params["tools"]
+                
+                response = self.client.messages.create(**request_params)
+            else:
+                raise
+        
+        # Handle different content types (text, tool_use, etc.)
+        if response.content and len(response.content) > 0:
+            # Extract text from content blocks
+            text_parts = []
+            for content_block in response.content:
+                if hasattr(content_block, 'text'):
+                    text_parts.append(content_block.text)
+                elif isinstance(content_block, dict) and content_block.get('type') == 'text':
+                    text_parts.append(content_block.get('text', ''))
+            
+            return ''.join(text_parts) if text_parts else str(response.content[0])
+        
+        return ""
     
     def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
@@ -526,13 +577,51 @@ class ClaudeProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        with self.client.messages.stream(
-            model="claude-3-opus-20240229",
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=message_list
-        ) as stream:
-            for text in stream.text_stream:
+        # Use Claude Sonnet 4.5 model (newer and more capable)
+        # Fallback to Claude 3 Opus if Sonnet 4.5 is not available
+        model = kwargs.get('model', "claude-sonnet-4-5-20250929")
+        
+        # Support for tools and beta features
+        tools = kwargs.get('tools', None)
+        betas = kwargs.get('betas', None)
+        
+        # Prepare request parameters
+        request_params = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": message_list
+        }
+        
+        # Add tools and betas if provided (for beta API)
+        if tools:
+            request_params["tools"] = tools
+        if betas:
+            request_params["betas"] = betas
+        
+        try:
+            # Try beta API if tools or betas are provided
+            if tools or betas:
+                stream = self.client.beta.messages.stream(**request_params)
+            else:
+                stream = self.client.messages.stream(**request_params)
+        except Exception as e:
+            # If Sonnet 4.5 fails, try with Claude 3 Opus
+            if "claude-sonnet-4-5" in model.lower():
+                print(f"INFO: Claude Sonnet 4.5 not available, falling back to Claude 3 Opus")
+                request_params["model"] = "claude-3-opus-20240229"
+                # Remove betas for older model
+                if "betas" in request_params:
+                    del request_params["betas"]
+                if "tools" in request_params:
+                    del request_params["tools"]
+                
+                stream = self.client.messages.stream(**request_params)
+            else:
+                raise
+        
+        with stream as stream_obj:
+            for text in stream_obj.text_stream:
                 yield text
 
 
