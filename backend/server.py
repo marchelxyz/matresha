@@ -451,10 +451,39 @@ class ClaudeProvider(AIProvider):
     
     def __init__(self, api_key=None):
         super().__init__(api_key or os.getenv('ANTHROPIC_API_KEY'))
+        self.client = None
+        if not self.api_key:
+            return
+        
         try:
             from anthropic import Anthropic
-            self.client = Anthropic(api_key=self.api_key) if self.api_key else None
+            # Initialize Anthropic client - ensure we only pass api_key
+            # Some versions may have issues with additional parameters
+            self.client = Anthropic(api_key=self.api_key)
         except ImportError:
+            print("ERROR: anthropic library not installed. Install with: pip install anthropic")
+            self.client = None
+        except TypeError as e:
+            # Handle TypeError which may occur if unexpected arguments are passed
+            error_msg = str(e)
+            if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
+                print(f"ERROR: Anthropic client initialization error - {error_msg}")
+                print("INFO: This may be due to a version incompatibility. Trying alternative method...")
+                # Try using environment variable instead
+                import os as anthropic_os
+                original_key = anthropic_os.environ.get('ANTHROPIC_API_KEY')
+                try:
+                    anthropic_os.environ['ANTHROPIC_API_KEY'] = self.api_key
+                    self.client = Anthropic()
+                finally:
+                    if original_key:
+                        anthropic_os.environ['ANTHROPIC_API_KEY'] = original_key
+                    elif 'ANTHROPIC_API_KEY' in anthropic_os.environ:
+                        del anthropic_os.environ['ANTHROPIC_API_KEY']
+            else:
+                raise
+        except Exception as e:
+            print(f"ERROR: Failed to initialize Anthropic client: {str(e)}")
             self.client = None
     
     def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
