@@ -457,27 +457,15 @@ class ClaudeProvider(AIProvider):
         
         try:
             from anthropic import Anthropic
-            # Try standard initialization first
-            self.client = Anthropic(api_key=self.api_key)
-        except ImportError:
-            print("ERROR: anthropic library not installed. Install with: pip install anthropic")
-            self.client = None
-        except (TypeError, AttributeError) as e:
-            # Handle TypeError/AttributeError which may occur due to version incompatibility
-            error_msg = str(e)
-            if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
-                print(f"ERROR: Anthropic client initialization error - {error_msg}")
-                print("INFO: This may be due to a version incompatibility. Trying alternative method...")
-                try:
-                    # Try with explicit httpx client to avoid proxies issue
-                    import httpx
-                    http_client = httpx.Client(timeout=60.0)
-                    self.client = Anthropic(
-                        api_key=self.api_key,
-                        http_client=http_client
-                    )
-                except Exception as e2:
-                    print(f"ERROR: Alternative initialization with http_client failed: {str(e2)}")
+            
+            # Try standard initialization first (without http_client to avoid proxies issue)
+            try:
+                self.client = Anthropic(api_key=self.api_key)
+            except (TypeError, AttributeError, ValueError) as e:
+                error_msg = str(e)
+                if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
+                    print(f"ERROR: Anthropic client initialization error - {error_msg}")
+                    print("INFO: This may be due to a version incompatibility. Trying alternative method...")
                     # Try using environment variable instead
                     try:
                         import os as anthropic_os
@@ -489,10 +477,25 @@ class ClaudeProvider(AIProvider):
                         elif 'ANTHROPIC_API_KEY' in anthropic_os.environ:
                             del anthropic_os.environ['ANTHROPIC_API_KEY']
                     except Exception as e3:
-                        print(f"ERROR: All initialization methods failed: {str(e3)}")
-                        self.client = None
-            else:
-                raise
+                        print(f"ERROR: Alternative initialization failed: {str(e3)}")
+                        # Try with explicit httpx client (but catch proxies error)
+                        try:
+                            import httpx
+                            # Create httpx client without proxies parameter
+                            http_client = httpx.Client(timeout=60.0)
+                            self.client = Anthropic(
+                                api_key=self.api_key,
+                                http_client=http_client
+                            )
+                        except Exception as e4:
+                            print(f"ERROR: All initialization methods failed: {str(e4)}")
+                            self.client = None
+                else:
+                    # Re-raise if it's not a proxies-related error
+                    raise
+        except ImportError:
+            print("ERROR: anthropic library not installed. Install with: pip install anthropic")
+            self.client = None
         except Exception as e:
             print(f"ERROR: Failed to initialize Anthropic client: {str(e)}")
             self.client = None
