@@ -730,8 +730,15 @@ function updateBotMessage({ textDiv }, text) {
     } else {
         textDiv.textContent = text;
     }
-    // Прокручиваем только если пользователь уже внизу (во время стриминга)
-    scrollToBottom(false, true);
+    // Автоматически прокручиваем вниз во время стриминга ответа ИИ
+    // Используем requestAnimationFrame для плавной прокрутки
+    requestAnimationFrame(() => {
+        if (chatMessages) {
+            const maxScroll = Math.max(0, chatMessages.scrollHeight - chatMessages.clientHeight);
+            chatMessages.scrollTop = maxScroll;
+            updateScrollButtonVisibility();
+        }
+    });
 }
 
 // Stream AI response
@@ -1053,9 +1060,24 @@ function updateScrollButtonVisibility() {
 // Scroll to bottom button click handler
 function handleScrollToBottomClick() {
     if (!chatMessages) return;
-    // При клике на кнопку всегда используем мгновенную прокрутку
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    updateScrollButtonVisibility();
+    // Прокручиваем плавно с самого верха до самого низа
+    const maxScroll = Math.max(0, chatMessages.scrollHeight - chatMessages.clientHeight);
+    
+    // Используем плавную прокрутку
+    try {
+        chatMessages.scrollTo({
+            top: maxScroll,
+            behavior: 'smooth'
+        });
+    } catch (e) {
+        // Fallback для браузеров, которые не поддерживают scrollTo с options
+        chatMessages.scrollTop = maxScroll;
+    }
+    
+    // Обновляем видимость кнопки после завершения прокрутки
+    setTimeout(() => {
+        updateScrollButtonVisibility();
+    }, 500);
 }
 
 // Load chat history from server
