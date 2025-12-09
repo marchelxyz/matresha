@@ -37,7 +37,8 @@ const providers = {
     claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
     groq: { name: 'Llama 3.3', model: 'llama-3.3-70b-versatile' },
     mistral: { name: 'Mistral Large', model: 'mistral-large-latest' },
-    deepseek: { name: 'DeepSeek Chat', model: 'deepseek-chat' }
+    deepseek: { name: 'DeepSeek Chat', model: 'deepseek-chat' },
+    openrouter: { name: 'OpenRouter', model: 'openai/gpt-4o' }
 };
 
 // Convert hex color to RGB
@@ -906,7 +907,8 @@ async function simulateStreamingResponse(userMessage, botMessageContainer) {
         claude: `Я - Claude 3 от Anthropic. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Claude необходимо настроить ключ API на сервере.\n\n**Возможности Claude:**\n• Работа с длинными текстами\n• Безопасность и этика\n• Точный анализ\n• Контекстное понимание`,
         groq: `Я - Llama 3 от Groq. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Groq необходимо настроить ключ API на сервере.\n\n**Возможности Llama 3:**\n• Очень быстрые ответы\n• Эффективность\n• Открытая модель\n• Низкая задержка`,
         mistral: `Я - Mistral Large. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API Mistral необходимо настроить ключ API на сервере.\n\n**Возможности Mistral:**\n• Многоязычность\n• Эффективность\n• Качественные ответы\n• Европейская разработка`,
-        deepseek: `Я - DeepSeek Chat. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API DeepSeek необходимо настроить ключ API на сервере.\n\n**Возможности DeepSeek:**\n• Высокая производительность\n• Эффективность\n• Качественные ответы\n• Поддержка длинного контекста`
+        deepseek: `Я - DeepSeek Chat. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API DeepSeek необходимо настроить ключ API на сервере.\n\n**Возможности DeepSeek:**\n• Высокая производительность\n• Эффективность\n• Качественные ответы\n• Поддержка длинного контекста`,
+        openrouter: `Я - OpenRouter. Вы спросили: "${userMessage}"\n\nЭто демонстрационный ответ. Для работы с реальным API OpenRouter необходимо настроить ключ API на сервере.\n\n**Возможности OpenRouter:**\n• Доступ к множеству моделей через единый API\n• Модели от OpenAI, Anthropic, Google, Meta и других\n• Гибкость выбора модели\n• Удобное управление балансом\n• Документация: https://openrouter.ai/docs`
     };
     
     const responseText = responses[currentProvider] || responses.openai;
