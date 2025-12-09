@@ -510,14 +510,62 @@ class ClaudeProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        response = self.client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=message_list
-        )
+        # Use Claude Sonnet 4.5 model (newer and more capable)
+        # Fallback to Claude 3 Opus if Sonnet 4.5 is not available
+        model = kwargs.get('model', "claude-sonnet-4-5-20250929")
         
-        return response.content[0].text
+        # Support for tools and beta features
+        tools = kwargs.get('tools', None)
+        betas = kwargs.get('betas', None)
+        
+        # Prepare request parameters
+        request_params = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": message_list
+        }
+        
+        # Add tools and betas if provided (for beta API)
+        if tools:
+            request_params["tools"] = tools
+        if betas:
+            request_params["betas"] = betas
+        
+        try:
+            # Try beta API if tools or betas are provided
+            if tools or betas:
+                response = self.client.beta.messages.create(**request_params)
+            else:
+                response = self.client.messages.create(**request_params)
+        except Exception as e:
+            # If Sonnet 4.5 fails, try with Claude 3 Opus
+            if "claude-sonnet-4-5" in model.lower():
+                print(f"INFO: Claude Sonnet 4.5 not available, falling back to Claude 3 Opus")
+                request_params["model"] = "claude-3-opus-20240229"
+                # Remove betas for older model
+                if "betas" in request_params:
+                    del request_params["betas"]
+                if "tools" in request_params:
+                    del request_params["tools"]
+                
+                response = self.client.messages.create(**request_params)
+            else:
+                raise
+        
+        # Handle different content types (text, tool_use, etc.)
+        if response.content and len(response.content) > 0:
+            # Extract text from content blocks
+            text_parts = []
+            for content_block in response.content:
+                if hasattr(content_block, 'text'):
+                    text_parts.append(content_block.text)
+                elif isinstance(content_block, dict) and content_block.get('type') == 'text':
+                    text_parts.append(content_block.get('text', ''))
+            
+            return ''.join(text_parts) if text_parts else str(response.content[0])
+        
+        return ""
     
     def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, **kwargs):
         if not self.client:
@@ -529,13 +577,51 @@ class ClaudeProvider(AIProvider):
         else:
             message_list = [{"role": "user", "content": message}]
         
-        with self.client.messages.stream(
-            model="claude-3-opus-20240229",
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=message_list
-        ) as stream:
-            for text in stream.text_stream:
+        # Use Claude Sonnet 4.5 model (newer and more capable)
+        # Fallback to Claude 3 Opus if Sonnet 4.5 is not available
+        model = kwargs.get('model', "claude-sonnet-4-5-20250929")
+        
+        # Support for tools and beta features
+        tools = kwargs.get('tools', None)
+        betas = kwargs.get('betas', None)
+        
+        # Prepare request parameters
+        request_params = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": message_list
+        }
+        
+        # Add tools and betas if provided (for beta API)
+        if tools:
+            request_params["tools"] = tools
+        if betas:
+            request_params["betas"] = betas
+        
+        try:
+            # Try beta API if tools or betas are provided
+            if tools or betas:
+                stream = self.client.beta.messages.stream(**request_params)
+            else:
+                stream = self.client.messages.stream(**request_params)
+        except Exception as e:
+            # If Sonnet 4.5 fails, try with Claude 3 Opus
+            if "claude-sonnet-4-5" in model.lower():
+                print(f"INFO: Claude Sonnet 4.5 not available, falling back to Claude 3 Opus")
+                request_params["model"] = "claude-3-opus-20240229"
+                # Remove betas for older model
+                if "betas" in request_params:
+                    del request_params["betas"]
+                if "tools" in request_params:
+                    del request_params["tools"]
+                
+                stream = self.client.messages.stream(**request_params)
+            else:
+                raise
+        
+        with stream as stream_obj:
+            for text in stream_obj.text_stream:
                 yield text
 
 
