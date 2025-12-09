@@ -1519,6 +1519,122 @@ class DeepSeekProvider(AIProvider):
                 raise ValueError(f"DeepSeek API ошибка: {error_msg}")
 
 
+class OpenRouterProvider(AIProvider):
+    """OpenRouter AI Provider (using OpenAI-compatible API)
+    
+    OpenRouter предоставляет доступ к множеству моделей через единый API.
+    Поддерживает модели от OpenAI, Anthropic, Google, Meta и других провайдеров.
+    Документация: https://openrouter.ai/docs
+    """
+    
+    def __init__(self, api_key=None):
+        super().__init__(api_key or os.getenv('OPENROUTER_API_KEY'))
+        self.base_url = "https://openrouter.ai/api/v1"
+        # Модель по умолчанию - можно изменить через параметр model
+        self.default_model = "openai/gpt-4o"
+        try:
+            import openai
+            if self.api_key:
+                # OpenRouter использует OpenAI-совместимый API
+                self.client = openai.OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                    default_headers={
+                        "HTTP-Referer": os.getenv('OPENROUTER_APP_URL', 'https://github.com/your-repo'),
+                        "X-Title": os.getenv('OPENROUTER_APP_NAME', 'AI Assistant')
+                    }
+                )
+            else:
+                self.client = None
+        except ImportError:
+            self.client = None
+    
+    def generate(self, message, temperature=0.7, max_tokens=2000, messages=None, model=None, **kwargs):
+        if not self.client:
+            raise ValueError("OpenRouter API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
+        # Используем указанную модель или модель по умолчанию
+        model_name = model or kwargs.get('model') or self.default_model
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=model_name,
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Обработка ошибок OpenRouter
+            if '401' in error_msg or error_type == 'AuthenticationError' or 'api key' in error_msg.lower() or 'unauthorized' in error_msg.lower():
+                raise ValueError("OpenRouter API: Неверный API ключ или ключ не настроен. Получите ключ на https://openrouter.ai/keys")
+            elif '402' in error_msg or 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or 'insufficient credits' in error_msg.lower():
+                raise ValueError("OpenRouter API: Недостаточно средств на балансе. Пополните баланс на https://openrouter.ai/credits")
+            elif 'rate limit' in error_msg.lower() or '429' in error_msg:
+                raise ValueError("OpenRouter API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            elif 'quota' in error_msg.lower():
+                raise ValueError("OpenRouter API: Превышена квота использования. Пожалуйста, проверьте ваш план на https://openrouter.ai")
+            elif 'model' in error_msg.lower() and ('not found' in error_msg.lower() or 'invalid' in error_msg.lower()):
+                raise ValueError(f"OpenRouter API: Модель '{model_name}' не найдена или недоступна. Проверьте список доступных моделей на https://openrouter.ai/models")
+            else:
+                raise ValueError(f"OpenRouter API ошибка: {error_msg}")
+    
+    def stream(self, message, temperature=0.7, max_tokens=2000, messages=None, model=None, **kwargs):
+        if not self.client:
+            raise ValueError("OpenRouter API key not configured")
+        
+        # Use provided messages history or create new from single message
+        if messages:
+            message_list = messages
+        else:
+            message_list = [{"role": "user", "content": message}]
+        
+        # Используем указанную модель или модель по умолчанию
+        model_name = model or kwargs.get('model') or self.default_model
+        
+        try:
+            stream = self.client.chat.completions.create(
+                model=model_name,
+                messages=message_list,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta and hasattr(delta, 'content') and delta.content:
+                        yield delta.content
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Обработка ошибок OpenRouter
+            if '401' in error_msg or error_type == 'AuthenticationError' or 'api key' in error_msg.lower() or 'unauthorized' in error_msg.lower():
+                raise ValueError("OpenRouter API: Неверный API ключ или ключ не настроен. Получите ключ на https://openrouter.ai/keys")
+            elif '402' in error_msg or 'insufficient balance' in error_msg.lower() or 'insufficient_balance' in error_msg.lower() or 'insufficient credits' in error_msg.lower():
+                raise ValueError("OpenRouter API: Недостаточно средств на балансе. Пополните баланс на https://openrouter.ai/credits")
+            elif 'rate limit' in error_msg.lower() or '429' in error_msg:
+                raise ValueError("OpenRouter API: Превышен лимит запросов. Пожалуйста, подождите немного и попробуйте снова.")
+            elif 'quota' in error_msg.lower():
+                raise ValueError("OpenRouter API: Превышена квота использования. Пожалуйста, проверьте ваш план на https://openrouter.ai")
+            elif 'model' in error_msg.lower() and ('not found' in error_msg.lower() or 'invalid' in error_msg.lower()):
+                raise ValueError(f"OpenRouter API: Модель '{model_name}' не найдена или недоступна. Проверьте список доступных моделей на https://openrouter.ai/models")
+            else:
+                raise ValueError(f"OpenRouter API ошибка: {error_msg}")
+
+
 # Provider registry
 PROVIDERS = {
     'openai': OpenAIProvider,
@@ -1526,7 +1642,8 @@ PROVIDERS = {
     'claude': ClaudeProvider,
     'groq': GroqProvider,
     'mistral': MistralProvider,
-    'deepseek': DeepSeekProvider
+    'deepseek': DeepSeekProvider,
+    'openrouter': OpenRouterProvider
 }
 
 
@@ -1546,7 +1663,8 @@ def get_provider(provider_name):
             'claude': 'ANTHROPIC_API_KEY',
             'groq': 'GROQ_API_KEY',
             'mistral': 'MISTRAL_API_KEY',
-            'deepseek': 'DEEPSEEK_API_KEY'
+            'deepseek': 'DEEPSEEK_API_KEY',
+            'openrouter': 'OPENROUTER_API_KEY'
         }.get(provider_name, f'{provider_name.upper()}_API_KEY')
         
         raise ValueError(
@@ -1703,7 +1821,8 @@ def get_providers():
         'claude': 'ANTHROPIC_API_KEY',
         'groq': 'GROQ_API_KEY',
         'mistral': 'MISTRAL_API_KEY',
-        'deepseek': 'DEEPSEEK_API_KEY'
+        'deepseek': 'DEEPSEEK_API_KEY',
+        'openrouter': 'OPENROUTER_API_KEY'
     }
     
     for name, env_var in env_var_map.items():

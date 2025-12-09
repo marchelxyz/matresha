@@ -164,7 +164,8 @@ class MockAIAPI extends AIAPI {
             gemini: `Я - Gemini 1.5 от Google. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
             claude: `Я - Claude 3 от Anthropic. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
             groq: `Я - Llama 3 от Groq. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
-            mistral: `Я - Mistral Large. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`
+            mistral: `Я - Mistral Large. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`,
+            openrouter: `Я - OpenRouter. Вы спросили: "${message}"\n\nЭто демонстрационный ответ. Для работы с реальным API необходимо настроить ключ API на сервере.`
         };
 
         const responseText = responses[provider] || responses.openai;
@@ -204,7 +205,7 @@ class MockAIAPI extends AIAPI {
             '/providers': {
                 success: true,
                 data: {
-                    providers: ['openai', 'gemini', 'claude', 'groq', 'mistral']
+                    providers: ['openai', 'gemini', 'claude', 'groq', 'mistral', 'openrouter']
                 }
             },
             '/health': {
