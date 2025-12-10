@@ -502,6 +502,10 @@ function createNewChat() {
     addWelcomeMessage();
     closeChatsSidebar();
     scrollToBottom();
+    // Обновляем список чатов после создания нового
+    if (chatsSidebar && chatsSidebar.classList.contains('show')) {
+        loadChatsList();
+    }
 }
 
 function addWelcomeMessage() {
@@ -544,12 +548,282 @@ async function loadChatsList() {
             return;
         }
         
-        // TODO: Загрузить чаты с сервера
-        // Пока используем заглушку
-        chatsList.innerHTML = '<div class="chats-empty">Чаты будут загружены</div>';
+        // Загружаем чаты и группы с сервера
+        const result = await api.getChatHistory(user.id);
+        
+        if (result.success && result.data) {
+            renderChatsList(result.data);
+        } else {
+            chatsList.innerHTML = '<div class="chats-empty">Нет сохраненных чатов</div>';
+        }
     } catch (error) {
         console.error('Failed to load chats:', error);
         chatsList.innerHTML = '<div class="chats-empty">Ошибка загрузки чатов</div>';
+    }
+}
+
+function renderChatsList(data) {
+    if (!chatsList) return;
+    
+    chatsList.innerHTML = '';
+    
+    // Кнопка создания новой группы
+    const createGroupBtn = document.createElement('button');
+    createGroupBtn.className = 'create-group-btn';
+    createGroupBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+        </svg>
+        <span>Создать группу</span>
+    `;
+    createGroupBtn.addEventListener('click', () => {
+        createNewGroup();
+    });
+    chatsList.appendChild(createGroupBtn);
+    
+    // Группы чатов
+    if (data.groups && Object.keys(data.groups).length > 0) {
+        Object.values(data.groups).forEach(groupData => {
+            const groupElement = createGroupElement(groupData.group, groupData.chats);
+            chatsList.appendChild(groupElement);
+        });
+    }
+    
+    // Чаты без группы
+    if (data.chats_without_group && data.chats_without_group.length > 0) {
+        const ungroupedSection = document.createElement('div');
+        ungroupedSection.className = 'chats-section';
+        ungroupedSection.innerHTML = '<div class="chats-section-title">Чаты</div>';
+        
+        data.chats_without_group.forEach(chat => {
+            const chatElement = createChatElement(chat);
+            ungroupedSection.appendChild(chatElement);
+        });
+        
+        chatsList.appendChild(ungroupedSection);
+    }
+    
+    // Если нет чатов и групп
+    if ((!data.groups || Object.keys(data.groups).length === 0) && 
+        (!data.chats_without_group || data.chats_without_group.length === 0)) {
+        chatsList.innerHTML = '<div class="chats-empty">Нет сохраненных чатов</div>';
+    }
+}
+
+function createGroupElement(group, chats) {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'chat-group';
+    groupDiv.dataset.groupId = group.id;
+    
+    const groupHeader = document.createElement('div');
+    groupHeader.className = 'chat-group-header';
+    groupHeader.innerHTML = `
+        <div class="chat-group-name">${group.name}</div>
+        <div class="chat-group-actions">
+            <button class="chat-group-action-btn" data-action="edit" aria-label="Редактировать группу">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+                </svg>
+            </button>
+            <button class="chat-group-action-btn" data-action="delete" aria-label="Удалить группу">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    // Обработчики действий группы
+    groupHeader.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        editGroup(group.id, group.name);
+    });
+    
+    groupHeader.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteGroup(group.id);
+    });
+    
+    const chatsContainer = document.createElement('div');
+    chatsContainer.className = 'chat-group-chats';
+    
+    if (chats && chats.length > 0) {
+        chats.forEach(chat => {
+            const chatElement = createChatElement(chat, group.id);
+            chatsContainer.appendChild(chatElement);
+        });
+    } else {
+        chatsContainer.innerHTML = '<div class="chats-empty">Нет чатов в группе</div>';
+    }
+    
+    groupDiv.appendChild(groupHeader);
+    groupDiv.appendChild(chatsContainer);
+    
+    return groupDiv;
+}
+
+function createChatElement(chat, groupId = null) {
+    const chatDiv = document.createElement('div');
+    chatDiv.className = 'chat-item';
+    if (currentChatId === chat.id) {
+        chatDiv.classList.add('active');
+    }
+    
+    const title = chat.title || `Чат ${chat.id}`;
+    chatDiv.innerHTML = `
+        <div class="chat-item-title">${title}</div>
+        <div class="chat-item-actions">
+            ${groupId ? '' : `
+                <button class="chat-item-action" data-action="add-to-group" aria-label="Добавить в группу">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+                    </svg>
+                </button>
+            `}
+            <button class="chat-item-action" data-action="delete" aria-label="Удалить чат">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    // Клик по чату - загрузить его
+    chatDiv.addEventListener('click', async (e) => {
+        if (e.target.closest('.chat-item-action')) return;
+        await loadChat(chat.id);
+    });
+    
+    // Обработчики действий
+    if (!groupId) {
+        chatDiv.querySelector('[data-action="add-to-group"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showAddToGroupDialog(chat.id);
+        });
+    }
+    
+    chatDiv.querySelector('[data-action="delete"]')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteChat(chat.id);
+    });
+    
+    return chatDiv;
+}
+
+async function createNewGroup() {
+    const name = prompt('Введите название группы:');
+    if (!name || !name.trim()) return;
+    
+    try {
+        const user = tg.initDataUnsafe?.user;
+        if (!user || !user.id) return;
+        
+        const result = await api.createChatGroup(user.id, name.trim());
+        if (result.success) {
+            await loadChatsList();
+        } else {
+            alert('Ошибка создания группы: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Failed to create group:', error);
+        alert('Ошибка создания группы');
+    }
+}
+
+async function editGroup(groupId, currentName) {
+    const name = prompt('Введите новое название группы:', currentName);
+    if (!name || !name.trim() || name === currentName) return;
+    
+    try {
+        const result = await api.updateChatGroup(groupId, name.trim());
+        if (result.success) {
+            await loadChatsList();
+        } else {
+            alert('Ошибка обновления группы: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Failed to update group:', error);
+        alert('Ошибка обновления группы');
+    }
+}
+
+async function deleteGroup(groupId) {
+    if (!confirm('Удалить группу? Чаты из группы не будут удалены.')) return;
+    
+    try {
+        const result = await api.deleteChatGroup(groupId);
+        if (result.success) {
+            await loadChatsList();
+        } else {
+            alert('Ошибка удаления группы: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Failed to delete group:', error);
+        alert('Ошибка удаления группы');
+    }
+}
+
+async function showAddToGroupDialog(chatId) {
+    try {
+        const user = tg.initDataUnsafe?.user;
+        if (!user || !user.id) return;
+        
+        const result = await api.getChatGroups(user.id);
+        if (!result.success || !result.data.groups || result.data.groups.length === 0) {
+            alert('Сначала создайте группу');
+            return;
+        }
+        
+        const groups = result.data.groups;
+        const groupNames = groups.map(g => g.name);
+        groupNames.push('(Без группы)');
+        
+        const selected = prompt(`Выберите группу:\n${groups.map((g, i) => `${i + 1}. ${g.name}`).join('\n')}\n${groups.length + 1}. (Без группы)`);
+        if (!selected) return;
+        
+        const index = parseInt(selected) - 1;
+        if (index < 0 || index > groups.length) return;
+        
+        const groupId = index < groups.length ? groups[index].id : null;
+        
+        const addResult = await api.addChatToGroup(chatId, groupId);
+        if (addResult.success) {
+            await loadChatsList();
+        } else {
+            alert('Ошибка добавления чата в группу: ' + (addResult.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Failed to add chat to group:', error);
+        alert('Ошибка добавления чата в группу');
+    }
+}
+
+async function deleteChat(chatId) {
+    if (!confirm('Удалить этот чат?')) return;
+    
+    // TODO: Добавить API endpoint для удаления чата
+    alert('Функция удаления чата будет реализована позже');
+}
+
+async function loadChat(chatId) {
+    try {
+        currentChatId = chatId;
+        const result = await api.getChatMessages(chatId);
+        
+        if (result.success && result.data.messages) {
+            chatMessages.innerHTML = '';
+            result.data.messages.forEach(msg => {
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    addMessageFromHistory(msg.content, msg.role, msg.attachments || []);
+                }
+            });
+            
+            closeChatsSidebar();
+            scrollToBottom(true);
+        }
+    } catch (error) {
+        console.error('Failed to load chat:', error);
+        alert('Ошибка загрузки чата');
     }
 }
 
@@ -772,6 +1046,12 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
+        // Получаем chat_id из заголовков ответа
+        const chatIdFromHeader = response.headers.get('X-Chat-Id');
+        if (chatIdFromHeader) {
+            currentChatId = parseInt(chatIdFromHeader);
+        }
+        
         // Обрабатываем потоковый ответ
         if (response.body && typeof response.body.getReader === 'function') {
             const reader = response.body.getReader();
@@ -795,6 +1075,9 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
                                     if (json.content) {
                                         fullText += json.content;
                                         updateBotMessage(botMessageContainer, fullText);
+                                    } else if (json.chat_id) {
+                                        // Сохраняем chat_id из ответа
+                                        currentChatId = json.chat_id;
                                     } else if (json.error) {
                                         // Обрабатываем ошибки от сервера
                                         throw new Error(json.error);
@@ -839,6 +1122,9 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
                             if (json.content) {
                                 fullText += json.content;
                                 updateBotMessage(botMessageContainer, fullText);
+                            } else if (json.chat_id) {
+                                // Сохраняем chat_id из ответа
+                                currentChatId = json.chat_id;
                             } else if (json.error) {
                                 // Обрабатываем ошибки от сервера
                                 throw new Error(json.error);
@@ -861,6 +1147,11 @@ async function sendMessageWithFiles(text, files, botMessageContainer) {
                         updateBotMessage(botMessageContainer, fullText);
                     }
                 }
+            }
+            
+            // Обновляем список чатов после получения ответа
+            if (currentChatId && chatsSidebar && chatsSidebar.classList.contains('show')) {
+                await loadChatsList();
             }
         } else {
             // Fallback для не-потокового ответа
@@ -951,6 +1242,12 @@ async function streamAIResponse(userMessage, botMessageContainer) {
             }
         );
         
+        // Получаем chat_id из заголовков ответа
+        const chatIdFromHeader = response.headers.get('X-Chat-Id');
+        if (chatIdFromHeader) {
+            currentChatId = parseInt(chatIdFromHeader);
+        }
+        
         let fullText = '';
         
         // Handle streaming response
@@ -975,6 +1272,9 @@ async function streamAIResponse(userMessage, botMessageContainer) {
                                     if (json.content) {
                                         fullText += json.content;
                                         updateBotMessage(botMessageContainer, fullText);
+                                    } else if (json.chat_id) {
+                                        // Сохраняем chat_id из ответа
+                                        currentChatId = json.chat_id;
                                     } else if (json.error) {
                                         // Обрабатываем ошибки от сервера
                                         throw new Error(json.error);
@@ -1019,6 +1319,9 @@ async function streamAIResponse(userMessage, botMessageContainer) {
                             if (json.content) {
                                 fullText += json.content;
                                 updateBotMessage(botMessageContainer, fullText);
+                            } else if (json.chat_id) {
+                                // Сохраняем chat_id из ответа
+                                currentChatId = json.chat_id;
                             } else if (json.error) {
                                 // Обрабатываем ошибки от сервера
                                 throw new Error(json.error);
@@ -1042,6 +1345,11 @@ async function streamAIResponse(userMessage, botMessageContainer) {
                     }
                 }
             }
+            
+            // Обновляем список чатов после получения ответа
+            if (currentChatId && chatsSidebar && chatsSidebar.classList.contains('show')) {
+                await loadChatsList();
+            }
         } else {
             // Fallback to non-streaming
             const userData = tg.initDataUnsafe?.user ? {
@@ -1062,6 +1370,14 @@ async function streamAIResponse(userMessage, botMessageContainer) {
             
             if (result.success && result.data.response) {
                 updateBotMessage(botMessageContainer, result.data.response);
+                // Сохраняем chat_id из ответа
+                if (result.data.chat_id) {
+                    currentChatId = result.data.chat_id;
+                    // Обновляем список чатов после получения ответа
+                    if (chatsSidebar && chatsSidebar.classList.contains('show')) {
+                        await loadChatsList();
+                    }
+                }
             } else {
                 throw new Error('Invalid response');
             }
