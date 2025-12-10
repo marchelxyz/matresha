@@ -127,17 +127,21 @@ def migrate_database(engine):
     if 'chats' not in tables:
         return  # Таблица не существует, будет создана через create_all
     
-    # Проверяем наличие колонки group_id в таблице chats
+    # Проверяем наличие колонок в таблице chats
     try:
         columns = [col['name'] for col in inspector.get_columns('chats')]
         
-        if 'group_id' not in columns:
-            print("Выполнение миграции: добавление колонки group_id в таблицу chats...")
-            # Создаём временную сессию для миграции
-            Session = sessionmaker(bind=engine)
-            db = Session()
-            try:
-                db_url = str(engine.url)
+        # Создаём временную сессию для миграции
+        Session = sessionmaker(bind=engine)
+        db = Session()
+        try:
+            db_url = str(engine.url)
+            migrations_performed = False
+            
+            # Миграция 1: добавление колонки group_id
+            if 'group_id' not in columns:
+                print("Выполнение миграции: добавление колонки group_id в таблицу chats...")
+                migrations_performed = True
                 
                 if 'postgresql' in db_url or 'postgres' in db_url:
                     # PostgreSQL
@@ -165,15 +169,36 @@ def migrate_database(engine):
                     except Exception:
                         pass  # Индекс может уже существовать
                     print("✓ Колонка group_id добавлена в SQLite")
+            
+            # Миграция 2: добавление колонки title
+            if 'title' not in columns:
+                print("Выполнение миграции: добавление колонки title в таблицу chats...")
+                migrations_performed = True
                 
+                if 'postgresql' in db_url or 'postgres' in db_url:
+                    # PostgreSQL
+                    db.execute(text("""
+                        ALTER TABLE chats 
+                        ADD COLUMN title VARCHAR(200);
+                    """))
+                    print("✓ Колонка title добавлена в PostgreSQL")
+                else:
+                    # SQLite
+                    db.execute(text("""
+                        ALTER TABLE chats 
+                        ADD COLUMN title VARCHAR(200);
+                    """))
+                    print("✓ Колонка title добавлена в SQLite")
+            
+            if migrations_performed:
                 db.commit()
                 print("✓ Миграция успешно выполнена")
-            except Exception as e:
-                db.rollback()
-                print(f"⚠ Ошибка при выполнении миграции: {e}")
-                # Не прерываем запуск, если миграция не удалась
-            finally:
-                db.close()
+        except Exception as e:
+            db.rollback()
+            print(f"⚠ Ошибка при выполнении миграции: {e}")
+            # Не прерываем запуск, если миграция не удалась
+        finally:
+            db.close()
     except Exception as e:
         print(f"⚠ Ошибка при проверке миграции: {e}")
 
