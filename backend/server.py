@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from werkzeug.utils import secure_filename
 
 # Import database
-from database import SessionLocal, Chat, Message, get_db
+from database import SessionLocal, Chat, Message, ChatGroup, get_db
 
 # Import storage
 from storage import storage
@@ -1676,7 +1676,7 @@ def get_provider(provider_name):
 
 
 # Database helper functions
-def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'):
+def get_or_create_chat(user_id, user_name=None, username=None, provider='openai', group_id=None, title=None):
     """Get existing chat or create new one for user. Returns chat_id (int)."""
     db = next(get_db())
     try:
@@ -1692,14 +1692,20 @@ def get_or_create_chat(user_id, user_name=None, username=None, provider='openai'
                 user_id=str(user_id),
                 user_name=user_name,
                 username=username,
-                provider=provider
+                provider=provider,
+                group_id=group_id,
+                title=title
             )
             db.add(chat)
             db.commit()
             db.refresh(chat)
         else:
-            # Update chat timestamp
+            # Update chat timestamp and optionally title/group
             chat.updated_at = datetime.now(timezone.utc)
+            if title and not chat.title:
+                chat.title = title
+            if group_id is not None:
+                chat.group_id = group_id
             db.commit()
         
         # Сохраняем chat_id до закрытия сессии, чтобы избежать DetachedInstanceError
@@ -1722,6 +1728,18 @@ def save_message(chat_id, role, content, provider=None, temperature=None, max_to
             max_tokens=max_tokens
         )
         db.add(message)
+        
+        # Если это первое сообщение пользователя и у чата нет названия, создаем его
+        if role == 'user':
+            chat = db.query(Chat).filter(Chat.id == chat_id).first()
+            if chat and not chat.title:
+                # Используем первые 50 символов сообщения как название
+                title = content[:50].strip()
+                if len(content) > 50:
+                    title += '...'
+                chat.title = title
+                chat.updated_at = datetime.now(timezone.utc)
+        
         db.commit()
         db.refresh(message)
         return message
@@ -1743,14 +1761,34 @@ def get_chat_history(chat_id, limit=50):
 
 
 def get_user_chats(user_id, limit=10):
-    """Get user's chat sessions"""
+    """Get user's chat sessions with groups"""
     db = next(get_db())
     try:
-        chats = db.query(Chat).filter(
-            Chat.user_id == str(user_id)
+        # Get chats without groups
+        chats_without_group = db.query(Chat).filter(
+            Chat.user_id == str(user_id),
+            Chat.group_id == None
         ).order_by(Chat.updated_at.desc()).limit(limit).all()
         
-        return [chat.to_dict() for chat in chats]
+        # Get all groups with their chats
+        groups = db.query(ChatGroup).filter(
+            ChatGroup.user_id == str(user_id)
+        ).order_by(ChatGroup.updated_at.desc()).all()
+        
+        groups_dict = {}
+        for group in groups:
+            group_chats = db.query(Chat).filter(
+                Chat.group_id == group.id
+            ).order_by(Chat.updated_at.desc()).all()
+            groups_dict[group.id] = {
+                'group': group.to_dict(),
+                'chats': [chat.to_dict() for chat in group_chats]
+            }
+        
+        return {
+            'chats_without_group': [chat.to_dict() for chat in chats_without_group],
+            'groups': groups_dict
+        }
     finally:
         db.close()
 
@@ -1765,6 +1803,111 @@ def get_chat_with_messages(chat_id):
             chat_dict['messages'] = get_chat_history(chat_id)
             return chat_dict
         return None
+    finally:
+        db.close()
+
+
+def create_chat_group(user_id, name):
+    """Create a new chat group"""
+    db = next(get_db())
+    try:
+        group = ChatGroup(
+            user_id=str(user_id),
+            name=name
+        )
+        db.add(group)
+        db.commit()
+        db.refresh(group)
+        return group.to_dict()
+    finally:
+        db.close()
+
+
+def get_user_groups(user_id):
+    """Get all chat groups for a user"""
+    db = next(get_db())
+    try:
+        groups = db.query(ChatGroup).filter(
+            ChatGroup.user_id == str(user_id)
+        ).order_by(ChatGroup.updated_at.desc()).all()
+        return [group.to_dict() for group in groups]
+    finally:
+        db.close()
+
+
+def update_chat_group(group_id, name=None):
+    """Update chat group"""
+    db = next(get_db())
+    try:
+        group = db.query(ChatGroup).filter(ChatGroup.id == group_id).first()
+        if not group:
+            return None
+        if name:
+            group.name = name
+        group.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(group)
+        return group.to_dict()
+    finally:
+        db.close()
+
+
+def delete_chat_group(group_id):
+    """Delete chat group (chats will be moved to no group)"""
+    db = next(get_db())
+    try:
+        group = db.query(ChatGroup).filter(ChatGroup.id == group_id).first()
+        if not group:
+            return False
+        # Remove group_id from all chats in this group
+        db.query(Chat).filter(Chat.group_id == group_id).update({Chat.group_id: None})
+        db.delete(group)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def add_chat_to_group(chat_id, group_id):
+    """Add chat to a group"""
+    db = next(get_db())
+    try:
+        chat = db.query(Chat).filter(Chat.id == chat_id).first()
+        if not chat:
+            return None
+        chat.group_id = group_id
+        chat.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(chat)
+        return chat.to_dict()
+    finally:
+        db.close()
+
+
+def remove_chat_from_group(chat_id):
+    """Remove chat from group"""
+    db = next(get_db())
+    try:
+        chat = db.query(Chat).filter(Chat.id == chat_id).first()
+        if not chat:
+            return None
+        chat.group_id = None
+        chat.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(chat)
+        return chat.to_dict()
+    finally:
+        db.close()
+
+
+def get_group_chats(group_id):
+    """Get all chats in a group"""
+    db = next(get_db())
+    try:
+        chats = db.query(Chat).filter(
+            Chat.group_id == group_id
+        ).order_by(Chat.updated_at.desc()).all()
+        return [chat.to_dict() for chat in chats]
     finally:
         db.close()
 
@@ -2058,6 +2201,10 @@ def chat_stream():
                     except Exception as db_error:
                         print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
+                # Отправляем chat_id перед завершением
+                if chat_id:
+                    yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
+                
                 yield "data: [DONE]\n\n"
             except ValueError as e:
                 # Handle ValueError (API errors from providers)
@@ -2106,13 +2253,19 @@ def chat_stream():
                     # Если не удалось отправить ошибку, просто завершаем
                     pass
         
+        response_headers = {
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+        
+        # Добавляем chat_id в заголовки, если он есть
+        if chat_id:
+            response_headers['X-Chat-Id'] = str(chat_id)
+        
         return Response(
             stream_with_context(generate()),
             mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no'
-            }
+            headers=response_headers
         )
     
     except ValueError as e:
@@ -2506,6 +2659,10 @@ def chat_with_files():
                     except Exception as db_error:
                         print(f"WARNING: Failed to save message to database: {str(db_error)}")
                 
+                # Отправляем chat_id перед завершением
+                if chat_id:
+                    yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
+                
                 yield "data: [DONE]\n\n"
             except ValueError as e:
                 # Handle ValueError (API errors from providers)
@@ -2553,13 +2710,19 @@ def chat_with_files():
                     # Если не удалось отправить ошибку, просто завершаем
                     pass
         
+        response_headers = {
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+        
+        # Добавляем chat_id в заголовки, если он есть
+        if chat_id:
+            response_headers['X-Chat-Id'] = str(chat_id)
+        
         return Response(
             stream_with_context(generate()),
             mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no'
-            }
+            headers=response_headers
         )
     
     except ValueError as e:
@@ -2605,13 +2768,11 @@ def get_chat_history_endpoint():
                 'data': chat
             })
         else:
-            # Get user's chats
-            chats = get_user_chats(user_id, limit=10)
+            # Get user's chats with groups
+            result = get_user_chats(user_id, limit=10)
             return jsonify({
                 'success': True,
-                'data': {
-                    'chats': chats
-                }
+                'data': result
             })
     
     except Exception as e:
@@ -2637,6 +2798,201 @@ def get_chat_messages(chat_id):
             }
         })
     
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# Chat Groups API endpoints
+@app.route('/api/chat/groups', methods=['GET'])
+@app.route('/chat/groups', methods=['GET'])
+def get_chat_groups():
+    """Get all chat groups for user"""
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'user_id is required'
+            }), 400
+        
+        groups = get_user_groups(user_id)
+        return jsonify({
+            'success': True,
+            'data': {
+                'groups': groups
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/groups', methods=['POST'])
+@app.route('/chat/groups', methods=['POST'])
+def create_chat_group_endpoint():
+    """Create a new chat group"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        name = data.get('name')
+        
+        if not user_id or not name:
+            return jsonify({
+                'success': False,
+                'error': 'user_id and name are required'
+            }), 400
+        
+        group = create_chat_group(user_id, name)
+        return jsonify({
+            'success': True,
+            'data': group
+        }), 201
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/groups/<int:group_id>', methods=['PUT'])
+@app.route('/chat/groups/<int:group_id>', methods=['PUT'])
+def update_chat_group_endpoint(group_id):
+    """Update chat group"""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        
+        if not name:
+            return jsonify({
+                'success': False,
+                'error': 'name is required'
+            }), 400
+        
+        group = update_chat_group(group_id, name)
+        if not group:
+            return jsonify({
+                'success': False,
+                'error': 'Group not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': group
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/groups/<int:group_id>', methods=['DELETE'])
+@app.route('/chat/groups/<int:group_id>', methods=['DELETE'])
+def delete_chat_group_endpoint(group_id):
+    """Delete chat group"""
+    try:
+        success = delete_chat_group(group_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': 'Group not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': 'Group deleted'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/groups/<int:group_id>/chats', methods=['GET'])
+@app.route('/chat/groups/<int:group_id>/chats', methods=['GET'])
+def get_group_chats_endpoint(group_id):
+    """Get all chats in a group"""
+    try:
+        chats = get_group_chats(group_id)
+        return jsonify({
+            'success': True,
+            'data': {
+                'chats': chats
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/<int:chat_id>/group', methods=['PUT'])
+@app.route('/chat/<int:chat_id>/group', methods=['PUT'])
+def add_chat_to_group_endpoint(chat_id):
+    """Add chat to a group"""
+    try:
+        data = request.get_json()
+        group_id = data.get('group_id')  # Can be None to remove from group
+        
+        if group_id is None:
+            chat = remove_chat_from_group(chat_id)
+        else:
+            chat = add_chat_to_group(chat_id, group_id)
+        
+        if not chat:
+            return jsonify({
+                'success': False,
+                'error': 'Chat not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': chat
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/<int:chat_id>', methods=['PUT'])
+@app.route('/chat/<int:chat_id>', methods=['PUT'])
+def update_chat_endpoint(chat_id):
+    """Update chat (title, group_id)"""
+    try:
+        data = request.get_json()
+        db = next(get_db())
+        try:
+            chat = db.query(Chat).filter(Chat.id == chat_id).first()
+            if not chat:
+                return jsonify({
+                    'success': False,
+                    'error': 'Chat not found'
+                }), 404
+            
+            if 'title' in data:
+                chat.title = data['title']
+            if 'group_id' in data:
+                chat.group_id = data['group_id']
+            
+            chat.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(chat)
+            
+            return jsonify({
+                'success': True,
+                'data': chat.to_dict()
+            })
+        finally:
+            db.close()
     except Exception as e:
         return jsonify({
             'success': False,

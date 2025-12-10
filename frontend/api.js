@@ -136,6 +136,58 @@ class AIAPI {
         
         return this.request(`/chat/${chatId}/messages?${params.toString()}`);
     }
+
+    // Chat Groups API
+    async getChatGroups(userId) {
+        const params = new URLSearchParams();
+        params.append('user_id', userId);
+        return this.request(`/chat/groups?${params.toString()}`);
+    }
+
+    async createChatGroup(userId, name) {
+        return this.request('/chat/groups', {
+            method: 'POST',
+            body: { user_id: userId, name }
+        });
+    }
+
+    async updateChatGroup(groupId, name) {
+        return this.request(`/chat/groups/${groupId}`, {
+            method: 'PUT',
+            body: { name }
+        });
+    }
+
+    async deleteChatGroup(groupId) {
+        return this.request(`/chat/groups/${groupId}`, {
+            method: 'DELETE'
+        });
+    }
+
+    async getGroupChats(groupId) {
+        return this.request(`/chat/groups/${groupId}/chats`);
+    }
+
+    async addChatToGroup(chatId, groupId) {
+        return this.request(`/chat/${chatId}/group`, {
+            method: 'PUT',
+            body: { group_id: groupId }
+        });
+    }
+
+    async removeChatFromGroup(chatId) {
+        return this.request(`/chat/${chatId}/group`, {
+            method: 'PUT',
+            body: { group_id: null }
+        });
+    }
+
+    async updateChat(chatId, data) {
+        return this.request(`/chat/${chatId}`, {
+            method: 'PUT',
+            body: data
+        });
+    }
 }
 
 // Mock API for development

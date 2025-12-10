@@ -65,6 +65,7 @@ body {
 .chats-menu-btn {
     position: absolute;
     left: 16px;
+    top: 60px; /* Смещаем ниже, чтобы не перекрывалась кнопкой выхода Telegram */
     background: transparent;
     border: none;
     padding: 8px;
@@ -786,6 +787,104 @@ body {
     padding: 40px 20px;
     color: var(--tg-theme-hint-color, #999);
     font-size: 14px;
+}
+
+.create-group-btn {
+    width: 100%;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: var(--tg-theme-button-color, #007bff);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.create-group-btn:hover {
+    background: var(--tg-theme-button-color, #0056b3);
+    transform: translateY(-1px);
+}
+
+.chat-group {
+    margin-bottom: 16px;
+    border-radius: 12px;
+    background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    overflow: hidden;
+}
+
+.chat-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    border-bottom: 1px solid var(--tg-theme-hint-color, #e5e5e5);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.chat-group-header:hover {
+    background: var(--tg-theme-hint-color, #e5e5e5);
+}
+
+.chat-group-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tg-theme-text-color, #212121);
+    flex: 1;
+}
+
+.chat-group-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.chat-group-header:hover .chat-group-actions {
+    opacity: 1;
+}
+
+.chat-group-action-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--tg-theme-hint-color, #999);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.chat-group-action-btn:hover {
+    background: var(--tg-theme-secondary-bg-color, #e5e5e5);
+    color: var(--tg-theme-text-color, #212121);
+}
+
+.chat-group-chats {
+    padding: 8px;
+}
+
+.chats-section {
+    margin-bottom: 16px;
+}
+
+.chats-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tg-theme-hint-color, #999);
+    text-transform: uppercase;
+    padding: 8px 16px;
+    margin-bottom: 8px;
 }
 
 .chat-item {
@@ -1688,5 +1787,6 @@ body {
     
     .chats-menu-btn {
         left: 12px;
+        top: 50px; /* Еще ниже на мобильных устройствах */
     }
 }
