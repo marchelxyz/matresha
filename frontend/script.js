@@ -19,6 +19,18 @@ const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
 const fileInput = document.getElementById('fileInput');
 const fileButton = document.getElementById('fileButton');
 const attachedFiles = document.getElementById('attachedFiles');
+const providerSidebar = document.getElementById('providerSidebar');
+const providerSidebarOverlay = document.getElementById('providerSidebarOverlay');
+const providerSidebarClose = document.getElementById('providerSidebarClose');
+const providerSelectorBtn = document.getElementById('providerSelectorBtn');
+const providerList = document.getElementById('providerList');
+const currentProviderName = document.getElementById('currentProviderName');
+const chatsSidebar = document.getElementById('chatsSidebar');
+const chatsSidebarOverlay = document.getElementById('chatsSidebarOverlay');
+const chatsSidebarClose = document.getElementById('chatsSidebarClose');
+const chatsMenuBtn = document.getElementById('chatsMenuBtn');
+const chatsList = document.getElementById('chatsList');
+const newChatBtn = document.getElementById('newChatBtn');
 
 // State
 let isProcessing = false;
@@ -29,16 +41,18 @@ let currentSettings = {
 };
 let markdownParser = null;
 let selectedFiles = []; // Массив выбранных файлов
+let currentChatId = null; // Текущий активный чат
+let chats = []; // Список чатов
 
 // Provider configurations
 const providers = {
-    openai: { name: 'GPT-4', model: 'gpt-4o' },
-    gemini: { name: 'Gemini 1.5', model: 'gemini-1.5-flash' },
-    claude: { name: 'Claude 3', model: 'claude-3-opus-20240229' },
-    groq: { name: 'Llama 3.3', model: 'llama-3.3-70b-versatile' },
-    mistral: { name: 'Mistral Large', model: 'mistral-large-latest' },
-    deepseek: { name: 'DeepSeek Chat', model: 'deepseek-chat' },
-    openrouter: { name: 'OpenRouter', model: 'openai/gpt-4o' }
+    openai: { name: 'OpenAI', model: 'GPT-4', displayName: 'OpenAI' },
+    gemini: { name: 'Google Gemini', model: 'Gemini 1.5', displayName: 'Google Gemini' },
+    claude: { name: 'Anthropic Claude', model: 'Claude 3', displayName: 'Anthropic Claude' },
+    groq: { name: 'Llama 3.3', model: 'llama-3.3-70b-versatile', displayName: 'Groq' },
+    mistral: { name: 'Mistral Large', model: 'mistral-large-latest', displayName: 'Mistral AI' },
+    deepseek: { name: 'DeepSeek Chat', model: 'deepseek-chat', displayName: 'DeepSeek' },
+    openrouter: { name: 'OpenRouter', model: 'openai/gpt-4o', displayName: 'OpenRouter' }
 };
 
 // Convert hex color to RGB
@@ -160,6 +174,11 @@ async function initApp() {
     
     // Load chat history
     await loadChatHistory();
+    
+    // Если нет сообщений, добавляем приветственное сообщение
+    if (!chatMessages || chatMessages.children.length === 0) {
+        addWelcomeMessage();
+    }
     
     // Добавить кнопку копирования в приветственное сообщение
     setTimeout(() => {
@@ -331,6 +350,62 @@ function setupEventListeners() {
             saveSettings();
         });
     }
+    
+    // Provider sidebar
+    if (providerSelectorBtn) {
+        providerSelectorBtn.addEventListener('click', () => {
+            openProviderSidebar();
+        });
+    }
+    
+    if (providerSidebarClose) {
+        providerSidebarClose.addEventListener('click', () => {
+            closeProviderSidebar();
+        });
+    }
+    
+    if (providerSidebarOverlay) {
+        providerSidebarOverlay.addEventListener('click', () => {
+            closeProviderSidebar();
+        });
+    }
+    
+    // Provider items
+    if (providerList) {
+        providerList.addEventListener('click', (e) => {
+            const providerItem = e.target.closest('.provider-item');
+            if (providerItem) {
+                const provider = providerItem.dataset.provider;
+                selectProvider(provider);
+                closeProviderSidebar();
+            }
+        });
+    }
+    
+    // Chats sidebar
+    if (chatsMenuBtn) {
+        chatsMenuBtn.addEventListener('click', () => {
+            openChatsSidebar();
+        });
+    }
+    
+    if (chatsSidebarClose) {
+        chatsSidebarClose.addEventListener('click', () => {
+            closeChatsSidebar();
+        });
+    }
+    
+    if (chatsSidebarOverlay) {
+        chatsSidebarOverlay.addEventListener('click', () => {
+            closeChatsSidebar();
+        });
+    }
+    
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', () => {
+            createNewChat();
+        });
+    }
 }
 
 // Handle provider change
@@ -346,11 +421,135 @@ function handleProviderChange() {
 // Update provider info
 function updateProviderInfo() {
     const provider = providers[currentProvider];
-    if (provider && modelInfo) {
-        modelInfo.textContent = provider.name;
+    if (provider) {
+        if (modelInfo) {
+            modelInfo.textContent = provider.name;
+        }
+        if (currentProviderName) {
+            currentProviderName.textContent = provider.displayName || provider.name;
+        }
         if (settingsProvider) {
             settingsProvider.value = currentProvider;
         }
+        if (aiProvider) {
+            aiProvider.value = currentProvider;
+        }
+        // Update active provider in sidebar
+        updateProviderSidebar();
+    }
+}
+
+// Provider sidebar functions
+function openProviderSidebar() {
+    if (providerSidebar && providerSidebarOverlay) {
+        providerSidebar.classList.add('show');
+        providerSidebarOverlay.classList.add('show');
+        if (providerSelectorBtn) {
+            providerSelectorBtn.classList.add('active');
+        }
+    }
+}
+
+function closeProviderSidebar() {
+    if (providerSidebar && providerSidebarOverlay) {
+        providerSidebar.classList.remove('show');
+        providerSidebarOverlay.classList.remove('show');
+        if (providerSelectorBtn) {
+            providerSelectorBtn.classList.remove('active');
+        }
+    }
+}
+
+function selectProvider(provider) {
+    if (providers[provider]) {
+        currentProvider = provider;
+        updateProviderInfo();
+        saveSettings();
+    }
+}
+
+function updateProviderSidebar() {
+    if (!providerList) return;
+    const items = providerList.querySelectorAll('.provider-item');
+    items.forEach(item => {
+        if (item.dataset.provider === currentProvider) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+}
+
+// Chats sidebar functions
+function openChatsSidebar() {
+    if (chatsSidebar && chatsSidebarOverlay) {
+        chatsSidebar.classList.add('show');
+        chatsSidebarOverlay.classList.add('show');
+        loadChatsList();
+    }
+}
+
+function closeChatsSidebar() {
+    if (chatsSidebar && chatsSidebarOverlay) {
+        chatsSidebar.classList.remove('show');
+        chatsSidebarOverlay.classList.remove('show');
+    }
+}
+
+function createNewChat() {
+    currentChatId = null;
+    chatMessages.innerHTML = '';
+    addWelcomeMessage();
+    closeChatsSidebar();
+    scrollToBottom();
+}
+
+function addWelcomeMessage() {
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'welcome-message';
+    welcomeDiv.innerHTML = `
+        <div class="message bot-message">
+            <div class="message-avatar">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
+                </svg>
+            </div>
+            <div class="message-content">
+                <div class="message-text">
+                    <h3>Добро пожаловать в AI Assistant! 🤖</h3>
+                    <p>Я ваш универсальный AI-помощник с поддержкой самых мощных нейросетей:</p>
+                    <ul>
+                        <li><strong>OpenAI GPT-4</strong> - для сложных задач и анализа</li>
+                        <li><strong>Google Gemini</strong> - для креативных решений</li>
+                        <li><strong>Anthropic Claude</strong> - для длинных текстов</li>
+                        <li><strong>Groq (Llama)</strong> - для быстрых ответов</li>
+                        <li><strong>Mistral AI</strong> - для многоязычных задач</li>
+                        <li><strong>DeepSeek Chat</strong> - для эффективных и качественных ответов</li>
+                    </ul>
+                    <p>Выберите модель в шапке и начните общение!</p>
+                </div>
+            </div>
+        </div>
+    `;
+    chatMessages.appendChild(welcomeDiv);
+}
+
+async function loadChatsList() {
+    if (!chatsList) return;
+    
+    try {
+        const user = tg.initDataUnsafe?.user;
+        if (!user || !user.id) {
+            chatsList.innerHTML = '<div class="chats-empty">Войдите в систему</div>';
+            return;
+        }
+        
+        // TODO: Загрузить чаты с сервера
+        // Пока используем заглушку
+        chatsList.innerHTML = '<div class="chats-empty">Чаты будут загружены</div>';
+    } catch (error) {
+        console.error('Failed to load chats:', error);
+        chatsList.innerHTML = '<div class="chats-empty">Ошибка загрузки чатов</div>';
     }
 }
 
@@ -492,22 +691,14 @@ async function sendMessage() {
     
     if ((!text && !hasFiles) || isProcessing) return;
     
-    // Add user message
-    const messageText = text || (hasFiles ? `Прикреплено файлов: ${selectedFiles.length}` : '');
-    addMessage(messageText, 'user');
-    
-    // Если есть файлы, показываем их в сообщении
-    if (hasFiles) {
-        selectedFiles.forEach(file => {
-            const fileInfo = document.createElement('div');
-            fileInfo.className = 'file-info';
-            fileInfo.textContent = `📎 ${file.name} (${formatFileSize(file.size)})`;
-            // Можно добавить fileInfo в последнее сообщение пользователя
-        });
-    }
+    // Add user message with attachments
+    addMessage(text, 'user', selectedFiles);
     
     // Clear input and files
+    const filesToSend = [...selectedFiles];
     messageInput.value = '';
+    selectedFiles = [];
+    updateAttachedFilesDisplay();
     autoResizeTextarea();
     handleInputChange();
     
@@ -520,11 +711,8 @@ async function sendMessage() {
     
     try {
         // Если есть файлы, загружаем их и отправляем вместе с текстом
-        if (hasFiles) {
-            await sendMessageWithFiles(text, selectedFiles, botMessageDiv);
-            // Очищаем файлы после отправки
-            selectedFiles = [];
-            updateAttachedFilesDisplay();
+        if (filesToSend.length > 0) {
+            await sendMessageWithFiles(text, filesToSend, botMessageDiv);
         } else {
             // Try to use API with streaming
             await streamAIResponse(text, botMessageDiv);
@@ -923,7 +1111,7 @@ async function simulateStreamingResponse(userMessage, botMessageContainer) {
 }
 
 // Add message to chat (for user messages)
-function addMessage(text, sender) {
+function addMessage(text, sender, attachments = []) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
     
@@ -947,20 +1135,126 @@ function addMessage(text, sender) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
+    // Добавляем вложения (изображения и файлы)
+    if (attachments && attachments.length > 0) {
+        attachments.forEach(file => {
+            const attachmentDiv = createAttachmentElement(file);
+            if (attachmentDiv) {
+                contentDiv.appendChild(attachmentDiv);
+            }
+        });
+    }
+    
     const textDiv = document.createElement('div');
     textDiv.className = 'message-text';
-    textDiv.textContent = text;
+    if (text) {
+        textDiv.textContent = text;
+    } else {
+        textDiv.style.display = 'none';
+    }
     
     // Добавляем кнопку копирования
     const copyBtn = createCopyButton(textDiv);
     contentDiv.appendChild(copyBtn);
     
-    contentDiv.appendChild(textDiv);
+    if (text) {
+        contentDiv.appendChild(textDiv);
+    }
     messageDiv.appendChild(contentDiv);
     
     chatMessages.appendChild(messageDiv);
     // Прокручиваем к новому сообщению пользователя
     scrollToBottom();
+}
+
+// Create attachment element (image or file)
+function createAttachmentElement(file) {
+    const attachmentDiv = document.createElement('div');
+    attachmentDiv.className = 'message-attachment';
+    
+    // Проверяем, является ли файл изображением
+    if (file.type && file.type.startsWith('image/')) {
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'message-image-container';
+        
+        // Определяем соотношение сторон
+        const img = new Image();
+        img.onload = function() {
+            const aspectRatio = img.width / img.height;
+            let aspectClass = 'aspect-16-9'; // По умолчанию
+            
+            if (aspectRatio > 1.3) {
+                aspectClass = 'aspect-16-9';
+            } else if (aspectRatio > 0.9) {
+                aspectClass = 'aspect-4-3';
+            } else if (aspectRatio > 0.7) {
+                aspectClass = 'aspect-1-1';
+            } else {
+                aspectClass = 'aspect-3-4';
+            }
+            
+            imageContainer.className = `message-image-container ${aspectClass}`;
+        };
+        
+        img.src = URL.createObjectURL(file);
+        img.className = 'message-image';
+        img.onclick = () => {
+            // Открыть изображение в полном размере
+            window.open(img.src, '_blank');
+        };
+        
+        imageContainer.appendChild(img);
+        attachmentDiv.appendChild(imageContainer);
+    } else {
+        // Файл (не изображение)
+        const fileDiv = document.createElement('div');
+        fileDiv.className = 'message-file';
+        
+        const fileIcon = document.createElement('div');
+        fileIcon.className = 'file-icon';
+        
+        // Определяем тип файла и устанавливаем соответствующую иконку
+        const fileName = file.name.toLowerCase();
+        let iconClass = 'default';
+        let iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" fill="currentColor"/></svg>';
+        
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+            iconClass = 'excel';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
+            iconClass = 'word';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (fileName.endsWith('.pdf')) {
+            iconClass = 'pdf';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (file.type && file.type.startsWith('image/')) {
+            iconClass = 'image';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" fill="currentColor"/></svg>';
+        }
+        
+        fileIcon.className = `file-icon ${iconClass}`;
+        fileIcon.innerHTML = iconSvg;
+        
+        const fileInfo = document.createElement('div');
+        fileInfo.className = 'file-info';
+        
+        const fileNameDiv = document.createElement('div');
+        fileNameDiv.className = 'file-name';
+        fileNameDiv.textContent = file.name;
+        
+        const fileSizeDiv = document.createElement('div');
+        fileSizeDiv.className = 'file-size';
+        fileSizeDiv.textContent = formatFileSize(file.size);
+        
+        fileInfo.appendChild(fileNameDiv);
+        fileInfo.appendChild(fileSizeDiv);
+        
+        fileDiv.appendChild(fileIcon);
+        fileDiv.appendChild(fileInfo);
+        attachmentDiv.appendChild(fileDiv);
+    }
+    
+    return attachmentDiv;
 }
 
 // Check if user is near bottom of chat
@@ -1103,7 +1397,7 @@ async function loadChatHistory() {
                 // Load messages from history
                 result.data.messages.forEach(msg => {
                     if (msg.role === 'user' || msg.role === 'assistant') {
-                        addMessageFromHistory(msg.content, msg.role);
+                        addMessageFromHistory(msg.content, msg.role, msg.attachments || []);
                     }
                 });
                 
@@ -1185,7 +1479,7 @@ async function loadChatHistory() {
 }
 
 // Add message from history (without sending to API)
-function addMessageFromHistory(text, sender) {
+function addMessageFromHistory(text, sender, attachments = []) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
     
@@ -1209,6 +1503,16 @@ function addMessageFromHistory(text, sender) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
+    // Добавляем вложения из истории (если есть URL или base64)
+    if (attachments && attachments.length > 0) {
+        attachments.forEach(attachment => {
+            const attachmentDiv = createAttachmentElementFromHistory(attachment);
+            if (attachmentDiv) {
+                contentDiv.appendChild(attachmentDiv);
+            }
+        });
+    }
+    
     const textDiv = document.createElement('div');
     textDiv.className = 'message-text';
     
@@ -1216,17 +1520,114 @@ function addMessageFromHistory(text, sender) {
     if (sender === 'assistant' && markdownParser) {
         textDiv.innerHTML = markdownParser.parse(text);
     } else {
-        textDiv.textContent = text;
+        textDiv.textContent = text || '';
     }
     
-    // Добавляем кнопку копирования
-    const copyBtn = createCopyButton(textDiv);
-    contentDiv.appendChild(copyBtn);
+    if (text) {
+        // Добавляем кнопку копирования
+        const copyBtn = createCopyButton(textDiv);
+        contentDiv.appendChild(copyBtn);
+        contentDiv.appendChild(textDiv);
+    }
     
-    contentDiv.appendChild(textDiv);
     messageDiv.appendChild(contentDiv);
-    
     chatMessages.appendChild(messageDiv);
+}
+
+// Create attachment element from history (with URL or base64)
+function createAttachmentElementFromHistory(attachment) {
+    const attachmentDiv = document.createElement('div');
+    attachmentDiv.className = 'message-attachment';
+    
+    // Проверяем, является ли вложение изображением
+    if (attachment.type && attachment.type.startsWith('image/') && attachment.url) {
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'message-image-container';
+        
+        const img = document.createElement('img');
+        img.src = attachment.url;
+        img.className = 'message-image';
+        img.onclick = () => {
+            window.open(attachment.url, '_blank');
+        };
+        
+        // Определяем соотношение сторон после загрузки
+        img.onload = function() {
+            const aspectRatio = img.naturalWidth / img.naturalHeight;
+            let aspectClass = 'aspect-16-9';
+            
+            if (aspectRatio > 1.3) {
+                aspectClass = 'aspect-16-9';
+            } else if (aspectRatio > 0.9) {
+                aspectClass = 'aspect-4-3';
+            } else if (aspectRatio > 0.7) {
+                aspectClass = 'aspect-1-1';
+            } else {
+                aspectClass = 'aspect-3-4';
+            }
+            
+            imageContainer.className = `message-image-container ${aspectClass}`;
+        };
+        
+        imageContainer.appendChild(img);
+        attachmentDiv.appendChild(imageContainer);
+    } else if (attachment.name) {
+        // Файл (не изображение)
+        const fileDiv = document.createElement('div');
+        fileDiv.className = 'message-file';
+        
+        const fileIcon = document.createElement('div');
+        fileIcon.className = 'file-icon';
+        
+        const fileName = attachment.name.toLowerCase();
+        let iconClass = 'default';
+        let iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" fill="currentColor"/></svg>';
+        
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+            iconClass = 'excel';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
+            iconClass = 'word';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (fileName.endsWith('.pdf')) {
+            iconClass = 'pdf';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 14H9v-2h4v2zm0-4H9v-2h4v2zm2-4H9V6h6v2z" fill="currentColor"/></svg>';
+        } else if (attachment.type && attachment.type.startsWith('image/')) {
+            iconClass = 'image';
+            iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" fill="currentColor"/></svg>';
+        }
+        
+        fileIcon.className = `file-icon ${iconClass}`;
+        fileIcon.innerHTML = iconSvg;
+        
+        const fileInfo = document.createElement('div');
+        fileInfo.className = 'file-info';
+        
+        const fileNameDiv = document.createElement('div');
+        fileNameDiv.className = 'file-name';
+        fileNameDiv.textContent = attachment.name;
+        
+        const fileSizeDiv = document.createElement('div');
+        fileSizeDiv.className = 'file-size';
+        fileSizeDiv.textContent = attachment.size ? formatFileSize(attachment.size) : '';
+        
+        fileInfo.appendChild(fileNameDiv);
+        fileInfo.appendChild(fileSizeDiv);
+        
+        fileDiv.appendChild(fileIcon);
+        fileDiv.appendChild(fileInfo);
+        
+        if (attachment.url) {
+            fileDiv.onclick = () => {
+                window.open(attachment.url, '_blank');
+            };
+            fileDiv.style.cursor = 'pointer';
+        }
+        
+        attachmentDiv.appendChild(fileDiv);
+    }
+    
+    return attachmentDiv;
 }
 
 // Copy message to clipboard

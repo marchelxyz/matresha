@@ -13,6 +13,11 @@
         <header class="header">
             <div class="header-content">
                 <div class="header-left">
+                    <button class="chats-menu-btn" id="chatsMenuBtn" aria-label="Меню чатов">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M3 18h18v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z" fill="currentColor"/>
+                        </svg>
+                    </button>
                     <div class="logo-wrapper">
                         <img src="logoo.svg" alt="Logo" class="app-logo">
                     </div>
@@ -20,19 +25,101 @@
             </div>
         </header>
 
+        <!-- Chats Sidebar -->
+        <div class="chats-sidebar-overlay" id="chatsSidebarOverlay"></div>
+        <div class="chats-sidebar" id="chatsSidebar">
+            <div class="chats-sidebar-header">
+                <h3>Чаты</h3>
+                <div class="chats-header-actions">
+                    <button class="new-chat-btn" id="newChatBtn" aria-label="Новый чат">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="chats-sidebar-close" id="chatsSidebarClose">&times;</button>
+                </div>
+            </div>
+            <div class="chats-list" id="chatsList">
+                <!-- Chats will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Provider Sidebar Menu -->
+        <div class="provider-sidebar-overlay" id="providerSidebarOverlay"></div>
+        <div class="provider-sidebar" id="providerSidebar">
+            <div class="provider-sidebar-header">
+                <h3>Выберите провайдера</h3>
+                <button class="provider-sidebar-close" id="providerSidebarClose">&times;</button>
+            </div>
+            <div class="provider-list" id="providerList">
+                <div class="provider-item" data-provider="openai">
+                    <div class="provider-logo">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                            <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7423-2.7363a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-2.8764 1.0408zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.7444 2.7363a.7712.7712 0 0 0 .7806 0l5.8425-3.3688v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0105-3.0231l-.142-.0852-4.7444-2.7363a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" fill="#10A37F"/>
+                        </svg>
+                    </div>
+                    <div class="provider-info">
+                        <div class="provider-name">OpenAI</div>
+                        <div class="provider-model">GPT-4</div>
+                    </div>
+                    <div class="provider-check">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="provider-item" data-provider="gemini">
+                    <div class="provider-logo">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="#4285F4"/>
+                        </svg>
+                    </div>
+                    <div class="provider-info">
+                        <div class="provider-name">Google Gemini</div>
+                        <div class="provider-model">Gemini 1.5</div>
+                    </div>
+                    <div class="provider-check">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="provider-item" data-provider="claude">
+                    <div class="provider-logo">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#D97757" stroke-width="2" fill="none"/>
+                        </svg>
+                    </div>
+                    <div class="provider-info">
+                        <div class="provider-name">Anthropic Claude</div>
+                        <div class="provider-model">Claude 3</div>
+                    </div>
+                    <div class="provider-check">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Model Selector Menu -->
         <div class="model-selector-menu">
             <div class="model-selector-content">
-                <div class="provider-selector">
-                    <select id="aiProvider" class="provider-select">
-                        <option value="openai">OpenAI GPT-4</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="claude">Anthropic Claude</option>
-                        <option value="groq">Groq (Llama)</option>
-                        <option value="mistral">Mistral AI</option>
-                        <option value="deepseek">DeepSeek Chat</option>
-                    </select>
-                </div>
+                <button class="provider-selector-btn" id="providerSelectorBtn">
+                    <span id="currentProviderName">OpenAI</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2" fill="none"/>
+                    </svg>
+                </button>
+                <select id="aiProvider" class="provider-select" style="display: none;">
+                    <option value="openai">OpenAI GPT-4</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="claude">Anthropic Claude</option>
+                    <option value="groq">Groq (Llama)</option>
+                    <option value="mistral">Mistral AI</option>
+                    <option value="deepseek">DeepSeek Chat</option>
+                </select>
             </div>
         </div>
 
@@ -40,30 +127,7 @@
         <main class="main-content">
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
-                    <div class="welcome-message">
-                        <div class="message bot-message">
-                            <div class="message-avatar">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
-                                </svg>
-                            </div>
-                            <div class="message-content">
-                                <div class="message-text">
-                                    <h3>Добро пожаловать в AI Assistant! 🤖</h3>
-                                    <p>Я ваш универсальный AI-помощник с поддержкой самых мощных нейросетей:</p>
-                                    <ul>
-                                        <li><strong>OpenAI GPT-4</strong> - для сложных задач и анализа</li>
-                                        <li><strong>Google Gemini</strong> - для креативных решений</li>
-                                        <li><strong>Anthropic Claude</strong> - для длинных текстов</li>
-                                        <li><strong>Groq (Llama)</strong> - для быстрых ответов</li>
-                                        <li><strong>Mistral AI</strong> - для многоязычных задач</li>
-                                        <li><strong>DeepSeek Chat</strong> - для эффективных и качественных ответов</li>
-                                    </ul>
-                                    <p>Выберите модель в шапке и начните общение!</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Welcome message will be added by JavaScript -->
                 </div>
 
                 <!-- Scroll to bottom button -->
