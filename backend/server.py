@@ -1912,6 +1912,49 @@ def get_group_chats(group_id):
         db.close()
 
 
+def delete_message(message_id):
+    """Delete a message by ID"""
+    db = next(get_db())
+    try:
+        message = db.query(Message).filter(Message.id == message_id).first()
+        if not message:
+            return False
+        db.delete(message)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def find_task_creation_suggestion_message(chat_id):
+    """Find message with task creation suggestion in a chat"""
+    db = next(get_db())
+    try:
+        # Ищем сообщения от ассистента, которые содержат предложение создать задачу
+        messages = db.query(Message).filter(
+            Message.chat_id == chat_id,
+            Message.role == 'assistant'
+        ).order_by(Message.created_at.desc()).all()
+        
+        # Ищем сообщение с текстом "Предложение создать задачу" или похожим
+        suggestion_keywords = [
+            'предложение создать задачу',
+            'предложить создать задачу',
+            'создать задачу',
+            'поставить задачу'
+        ]
+        
+        for message in messages:
+            content_lower = message.content.lower()
+            for keyword in suggestion_keywords:
+                if keyword in content_lower:
+                    return message.id
+        
+        return None
+    finally:
+        db.close()
+
+
 @app.route('/api/health', methods=['GET'])
 @app.route('/health', methods=['GET'])
 def health():
@@ -2993,6 +3036,79 @@ def update_chat_endpoint(chat_id):
             })
         finally:
             db.close()
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/tasks', methods=['POST'])
+@app.route('/tasks', methods=['POST'])
+def create_task():
+    """Create a task and delete the task creation suggestion message"""
+    try:
+        data = request.get_json()
+        chat_id = data.get('chat_id')
+        message_id = data.get('message_id')  # Опционально: ID сообщения с предложением
+        task_title = data.get('title', '')
+        task_description = data.get('description', '')
+        
+        if not chat_id:
+            return jsonify({
+                'success': False,
+                'error': 'chat_id is required'
+            }), 400
+        
+        deleted_message_id = None
+        
+        # Если указан message_id, удаляем это сообщение
+        if message_id:
+            if delete_message(message_id):
+                deleted_message_id = message_id
+        else:
+            # Иначе ищем сообщение с предложением создать задачу
+            suggestion_message_id = find_task_creation_suggestion_message(chat_id)
+            if suggestion_message_id:
+                if delete_message(suggestion_message_id):
+                    deleted_message_id = suggestion_message_id
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'task_created': True,
+                'chat_id': chat_id,
+                'deleted_message_id': deleted_message_id,
+                'title': task_title,
+                'description': task_description
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/messages/<int:message_id>', methods=['DELETE'])
+@app.route('/messages/<int:message_id>', methods=['DELETE'])
+def delete_message_endpoint(message_id):
+    """Delete a message by ID"""
+    try:
+        success = delete_message(message_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': 'Message not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'message_id': message_id,
+                'deleted': True
+            }
+        })
     except Exception as e:
         return jsonify({
             'success': False,

@@ -188,6 +188,24 @@ class AIAPI {
             body: data
         });
     }
+
+    // Task creation API
+    async createTask(chatId, taskData = {}) {
+        return this.request('/tasks', {
+            method: 'POST',
+            body: {
+                chat_id: chatId,
+                ...taskData
+            }
+        });
+    }
+
+    // Delete message API
+    async deleteMessage(messageId) {
+        return this.request(`/messages/${messageId}`, {
+            method: 'DELETE'
+        });
+    }
 }
 
 // Mock API for development
