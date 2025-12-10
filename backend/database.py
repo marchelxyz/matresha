@@ -3,7 +3,7 @@ Database models and initialization for chat history
 """
 import os
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, JSON, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
@@ -118,6 +118,66 @@ def get_database_url():
         return f'sqlite:///{db_path}'
 
 
+def migrate_database(engine):
+    """Выполняет миграции базы данных"""
+    inspector = inspect(engine)
+    
+    # Проверяем существование таблицы chats
+    tables = inspector.get_table_names()
+    if 'chats' not in tables:
+        return  # Таблица не существует, будет создана через create_all
+    
+    # Проверяем наличие колонки group_id в таблице chats
+    try:
+        columns = [col['name'] for col in inspector.get_columns('chats')]
+        
+        if 'group_id' not in columns:
+            print("Выполнение миграции: добавление колонки group_id в таблицу chats...")
+            # Создаём временную сессию для миграции
+            Session = sessionmaker(bind=engine)
+            db = Session()
+            try:
+                db_url = str(engine.url)
+                
+                if 'postgresql' in db_url or 'postgres' in db_url:
+                    # PostgreSQL
+                    db.execute(text("""
+                        ALTER TABLE chats 
+                        ADD COLUMN group_id INTEGER 
+                        REFERENCES chat_groups(id) 
+                        ON DELETE SET NULL;
+                    """))
+                    # Создаём индекс, если его нет
+                    try:
+                        db.execute(text("CREATE INDEX IF NOT EXISTS ix_chats_group_id ON chats(group_id);"))
+                    except Exception:
+                        pass  # Индекс может уже существовать
+                    print("✓ Колонка group_id добавлена в PostgreSQL")
+                else:
+                    # SQLite
+                    db.execute(text("""
+                        ALTER TABLE chats 
+                        ADD COLUMN group_id INTEGER;
+                    """))
+                    # Создаём индекс, если его нет
+                    try:
+                        db.execute(text("CREATE INDEX IF NOT EXISTS ix_chats_group_id ON chats(group_id);"))
+                    except Exception:
+                        pass  # Индекс может уже существовать
+                    print("✓ Колонка group_id добавлена в SQLite")
+                
+                db.commit()
+                print("✓ Миграция успешно выполнена")
+            except Exception as e:
+                db.rollback()
+                print(f"⚠ Ошибка при выполнении миграции: {e}")
+                # Не прерываем запуск, если миграция не удалась
+            finally:
+                db.close()
+    except Exception as e:
+        print(f"⚠ Ошибка при проверке миграции: {e}")
+
+
 def init_database():
     """Initialize database connection and create tables"""
     database_url = get_database_url()
@@ -141,6 +201,9 @@ def init_database():
     
     # Create session factory
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    
+    # Выполняем миграции
+    migrate_database(engine)
     
     return engine, SessionLocal
 
